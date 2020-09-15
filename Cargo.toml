@@ -1,0 +1,40 @@
+[dependencies]
+rand = "0.7"
+polynomials = "0.2"
+
+[dependencies.curve25519-dalek]
+default-features = false
+version = "3.0"
+features = ["simd_backend", "nightly", "serde", "alloc"]
+
+[dependencies.blake2]
+default-features = false
+version = "0.9"
+features = ["simd_asm"]
+
+[dependencies.merlin]
+default-features = false
+version = "2"
+
+[dependencies.serde]
+default-features = false
+version = "1.0"
+features = ["derive"]
+optional = true
+
+[dev-dependencies]
+criterion = "0.3"
+
+[features]
+default = ["std", "serde"]
+std = []
+
+[[bench]]
+name = "prove_and_verify"
+harness = false
+
+[package]
+name = "arcturus"
+version = "0.1.0"
+authors = ["cargodog <cargodog@protonmail.com>"]
+edition = "2018"
