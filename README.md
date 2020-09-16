@@ -20,6 +20,12 @@ USE AT YOUR OWN RISK!
 ## Documentation
 Detailed documentation can be found [here][docs-external].
 
+# Use
+Latest release version can be found in the git tags or on [crates.io][arcturus-crate]. Add the latest version to your project's `Cargo.toml`:
+```toml
+arcturus = "x.y.z"
+```
+
 # Example:
 ```rust
 use arcturus::*;
@@ -83,6 +89,7 @@ ring of UTXOs is essential to providing anonymity for the signer and his transac
 
 
 [arcturus-paper]: https://eprint.iacr.org/2020/312
+[arcturus-crate]: https://crates.io/crates/arcturus
 [docs-external]: https://docs.rs/arcturus
 [bulletproofs-crate]: https://crates.io/crates/bulletproofs
 [criterion-crate]: https://crates.io/crates/criterion
