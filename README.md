@@ -12,12 +12,12 @@ anonymity sets. A correct proof provides the following guarantees:
 1) The transaction input and output values are hidden (aka confidential).
 1) The transaction inputs and signing keys are hidden in a large anonymity set.<sup>[3](#usage-notes)</sup>
 
-## ⚠️  Security Warning
+# ⚠️  Security Warning
 This crate is a work in progress and has not been independently audited!
 
 USE AT YOUR OWN RISK!
 
-## Documentation
+# Documentation
 Detailed documentation can be found [here][docs-external].
 
 # Usage and Features
@@ -32,6 +32,20 @@ builds without `std`, but still implements `serde`:
 ```sh
 cargo build --no-default-features --features "serde"
 ```
+
+Please keep the following points in mind when building a project around this library:
+1) This library does not include range proofs. To ensure no input or output value is
+negative, each input and output commitment should be accompanied with a range proof, such as
+[bulletproofs][bulletproofs-crate]. Failure to prevent negative inputs or outputs
+could allow an attacker to create new coins (e.g. inflation bug).
+
+2) To prevent double spends, each input's linking tag should be checked for uniqueness and
+recorded in a list of spent outputs. If a tag is ever seen twice, this means that the
+corresponding input has already been spent.
+
+3) This library leaves selection of the anonymity set up to the user. Selecting a good
+ring of UTXOs is essential to providing anonymity for the signer and his transaction inputs.
+
 
 # Example:
 ```rust
@@ -80,19 +94,6 @@ cargo bench
 
 # Contributing
 Please see [CONTRIBUTING.md][contributing].
-
-# Usage notes
-1) This library does not include range proofs. To ensure no input or output value is
-negative, each input and output commitment should be accompanied with a range proof, such as
-[bulletproofs][bulletproofs-crate]. Failure to prevent negative inputs or outputs
-could allow an attacker to create new coins (e.g. inflation bug).
-
-2) To prevent double spends, each input's linking tag should be checke for uniqueness and
-recorded in a list of spent outputs. If a tag is ever seen twice, this means that the
-corresponding input has already been spent.
-
-3) This library leaves selection of the anonymity set up to the user. Selecting a good
-ring of UTXOs is essential to providing anonymity for the signer and his transaction inputs.
 
 
 [arcturus-paper]: https://eprint.iacr.org/2020/312
