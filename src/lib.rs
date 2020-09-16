@@ -68,6 +68,9 @@
 //! cargo bench
 //! ```
 //!
+//! # Contributing
+//! Please see [CONTRIBUTING.md](CONTRIBUTING.md).
+//!
 //! *Note 1: This library does not include range proofs. To ensure no input or output value is
 //! negative, each input and output commitment should be accompanied with a range proof, such as
 //! [bulletproofs](https://docs.rs/bulletproofs). Failure to prevent negative inputs or outputs
