@@ -4,11 +4,11 @@
 //! Arcturus enables efficient proof and verification of confidential transactions with very large
 //! anonymity sets. A correct proof provides the following guarantees:
 //! 1) The signer posesses the signing key for each spent output in the ring.
-//! 1) The sum of spent inputs matches the sum of newly minted outputs.<sup>1</sup>
+//! 1) The sum of spent inputs matches the sum of newly minted outputs.<sup>[1](#notes)</sup>
 //! 1) Each spent input is accompanied with a unique, deterministic, linking tag to detect double
-//!    spends.<sup>2</sup>
+//!    spends.<sup>[2](#notes)</sup>
 //! 1) The transaction input and output values are hidden (aka confidential).
-//! 1) The transaction inputs and signing keys are hidden in a large anonymity set.<sup>3</sup>
+//! 1) The transaction inputs and signing keys are hidden in a large anonymity set.<sup>[3](#notes)</sup>
 //!
 //! # Example:
 //! ```
@@ -69,19 +69,20 @@
 //! ```
 //!
 //! # Contributing
-//! Please see [CONTRIBUTING.md](CONTRIBUTING.md).
+//! Please see [CONTRIBUTING.md](https://githup.com/cargodog/arcturus/CONTRIBUTING.md).
 //!
-//! *Note 1: This library does not include range proofs. To ensure no input or output value is
+//! # Notes
+//! Note 1: This library does not include range proofs. To ensure no input or output value is
 //! negative, each input and output commitment should be accompanied with a range proof, such as
 //! [bulletproofs](https://docs.rs/bulletproofs). Failure to prevent negative inputs or outputs
-//! could allow an attacker to create new coins (e.g. inflation bug).*
+//! could allow an attacker to create new coins (e.g. inflation bug).
 //!
-//! *Note 2: To prevent double spends, each input's linking tag should be checke for uniqueness and
+//! Note 2: To prevent double spends, each input's linking tag should be checke for uniqueness and
 //! recorded in a list of spent outputs. If a tag is ever seen twice, this means that the
-//! corresponding input has already been spent.*
+//! corresponding input has already been spent.
 //!
-//! *Note 3: This library leaves selection of the anonymity set up to the user. Selecting a good
-//! ring of UTXOs is essential to providing anonymity for the signer and his transaction inputs.*
+//! Note 3: This library leaves selection of the anonymity set up to the user. Selecting a good
+//! ring of UTXOs is essential to providing anonymity for the signer and his transaction inputs.
 
 #![no_std]
 #![feature(test)]

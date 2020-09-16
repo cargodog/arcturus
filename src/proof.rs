@@ -124,6 +124,7 @@ impl ArcturusProof {
     }
 }
 
+/// Generators and proof context necessary to prove and verify Arcturus proofs.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ArcturusGens {
     n: usize,
