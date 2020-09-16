@@ -20,10 +20,17 @@ USE AT YOUR OWN RISK!
 ## Documentation
 Detailed documentation can be found [here][docs-external].
 
-# Use
+# Usage and Features
 Latest release version can be found in the git tags or on [crates.io][arcturus-crate]. Add the latest version to your project's `Cargo.toml`:
 ```toml
 arcturus = "x.y.z"
+```
+
+By default, `std` and `serde` features are enabled. To build without `std` or without `serde`
+implementations, use the `--no-default-features` option when building. The following example
+builds without `std`, but still implements `serde`:
+```sh
+cargo build --no-default-features --features "serde"
 ```
 
 # Example:
