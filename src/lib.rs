@@ -69,7 +69,7 @@
 //! ```
 //!
 //! # Contributing
-//! Please see [CONTRIBUTING.md](https://githup.com/cargodog/arcturus/CONTRIBUTING.md).
+//! Please see [CONTRIBUTING.md](https://github.com/cargodog/arcturus/blob/master/CONTRIBUTING.md).
 //!
 //! # Notes
 //! Note 1: This library does not include range proofs. To ensure no input or output value is
