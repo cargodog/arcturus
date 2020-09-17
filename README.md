@@ -6,11 +6,11 @@ proof system [[link][arcturus-paper]].
 Arcturus enables efficient proof and verification of confidential transactions with very large
 anonymity sets. A correct proof provides the following guarantees:
 1) The signer posesses the signing key for each spent output in the ring.
-1) The sum of spent inputs matches the sum of newly minted outputs.
+1) The sum of spent inputs matches the sum of newly minted outputs.<sup>[1](#usage-notes)</sup>
 1) Each spent input is accompanied with a unique, deterministic, linking tag to detect double
-   spends.
+   spends.<sup>[2](#usage-notes)</sup>
 1) The transaction input and output values are hidden (aka confidential).
-1) The transaction inputs and signing keys are hidden in a large anonymity set.
+1) The transaction inputs and signing keys are hidden in a large anonymity set.<sup>[3](#usage-notes)</sup>
 
 # ⚠️  Security Warning
 This crate is a work in progress and has not been independently audited!
@@ -89,7 +89,7 @@ assert!(gens.verify(&mut t, &ring[..], &proofs[..]).is_ok());
 Benchmarks are run using [criterion.rs][criterion-crate].
 ```sh
 export RUSTFLAGS="-C target_cpu=native"
-cargo bench
+cargo bench --no-default-features --features "std simd_backend serde"
 ```
 
 # Contributing

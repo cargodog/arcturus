@@ -5,16 +5,15 @@ polynomials = "0.2"
 [dependencies.curve25519-dalek]
 default-features = false
 version = "3.0"
-features = ["simd_backend", "nightly", "serde", "alloc"]
+features = ["nightly", "serde", "alloc"]
 
 [dependencies.blake2]
 default-features = false
 version = "0.9"
-features = ["simd_asm"]
 
 [dependencies.merlin]
 default-features = false
-version = "2"
+ersion = "2"
 
 [dependencies.serde]
 default-features = false
@@ -26,8 +25,9 @@ optional = true
 criterion = "0.3"
 
 [features]
-default = ["std", "serde"]
+default = ["std", "serde", "curve25519-dalek/u32_backend"]
 std = []
+simd_backend = ["curve25519-dalek/simd_backend", "blake2/simd_asm"]
 
 [[bench]]
 name = "prove_and_verify"

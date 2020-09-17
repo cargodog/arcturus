@@ -49,7 +49,6 @@ fn proof_time(c: &mut Criterion) {
     for cfg in [
         (16, 2, 3),
         (16, 3, 3),
-        (16, 4, 3),
     ]
     .iter()
     {
@@ -84,7 +83,6 @@ fn verification_time(c: &mut Criterion) {
     for cfg in [
         (16, 2, 3),
         (16, 3, 3),
-        (16, 4, 3),
     ]
     .iter()
     {
