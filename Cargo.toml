@@ -28,6 +28,8 @@ criterion = "0.3"
 default = ["std", "serde", "curve25519-dalek/u32_backend"]
 std = []
 simd_backend = ["curve25519-dalek/simd_backend", "blake2/simd_asm"]
+u64_backend = ["curve25519-dalek/u64_backend"]
+u32_backend = ["curve25519-dalek/u32_backend"]
 
 [[bench]]
 name = "prove_and_verify"

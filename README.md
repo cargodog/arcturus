@@ -27,10 +27,16 @@ arcturus = "x.y.z"
 ```
 
 By default, `std` and `serde` features are enabled. To build without `std` or without `serde`
-implementations, use the `--no-default-features` option when building. The following example
+implementations, use the `--no-default-features` option when building. Note, if default features
+are disabled, a backend must be specified. The available backends are:
+* `simd_backend`
+* `u64_backend`
+* `u32_backend`
+
+The following example
 builds without `std`, but still implements `serde`:
 ```sh
-cargo build --no-default-features --features "serde"
+cargo build --no-default-features --features "serde simd_backend"
 ```
 
 Please keep the following points in mind when building a project around this library:
