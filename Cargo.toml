@@ -13,7 +13,7 @@ version = "0.9"
 
 [dependencies.merlin]
 default-features = false
-ersion = "2"
+version = "2"
 
 [dependencies.serde]
 default-features = false
