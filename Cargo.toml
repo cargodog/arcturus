@@ -13,7 +13,7 @@ version = "0.9"
 
 [dependencies.merlin]
 default-features = false
-ersion = "2"
+version = "2"
 
 [dependencies.serde]
 default-features = false
@@ -37,7 +37,7 @@ harness = false
 
 [package]
 name = "arcturus"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["cargodog <cargodog@protonmail.com>"]
 edition = "2018"
 description = "Implementation of Arcturus zero-knowledge proofs for confidential transactions."
