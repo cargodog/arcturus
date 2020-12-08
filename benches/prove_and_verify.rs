@@ -1,13 +1,24 @@
 use arcturus::proof::*;
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput, SamplingMode};
+use criterion::{
+    black_box, criterion_group, criterion_main, BenchmarkId, Criterion, SamplingMode, Throughput,
+};
 use curve25519_dalek::ristretto::RistrettoPoint;
 use curve25519_dalek::scalar::Scalar;
 use merlin::Transcript;
 use rand::rngs::OsRng; // You should use a more secure RNG
 use std::iter;
 
-
-fn setup_prover_data(n: usize, m: usize, w: usize) -> (ArcturusGens, Vec<Output>, Vec<usize>, Vec<SpendSecret>, Vec<MintSecret>) {
+fn setup_prover_data(
+    n: usize,
+    m: usize,
+    w: usize,
+) -> (
+    ArcturusGens,
+    Vec<Output>,
+    Vec<usize>,
+    Vec<SpendSecret>,
+    Vec<MintSecret>,
+) {
     let gens = ArcturusGens::new(n, m, w).unwrap();
     let ring_size = gens.ring_size();
 
@@ -46,12 +57,7 @@ fn proof_time(c: &mut Criterion) {
     group.sample_size(10);
 
     // Iterate over list of proof configs (n, m, w)
-    for cfg in [
-        (16, 2, 3),
-        (16, 3, 3),
-    ]
-    .iter()
-    {
+    for cfg in [(16, 2, 3), (16, 3, 3)].iter() {
         let (gens, ring, idxs, spends, mints) = setup_prover_data(cfg.0, cfg.1, cfg.2);
         group.throughput(Throughput::Elements(1));
         group.bench_with_input(
@@ -80,14 +86,10 @@ fn verification_time(c: &mut Criterion) {
     group.sample_size(10);
 
     // Iterate over list of proof configs (n, m, w)
-    for cfg in [
-        (16, 2, 3),
-        (16, 3, 3),
-    ]
-    .iter()
-    {
+    for cfg in [(16, 2, 3), (16, 3, 3)].iter() {
         let (gens, ring, idxs, spends, mints) = setup_prover_data(cfg.0, cfg.1, cfg.2);
-        let proof = gens.prove(
+        let proof = gens
+            .prove(
                 &mut Transcript::new(b"Arcturus-Becnhmark"),
                 &ring[..],
                 &idxs[..],
@@ -95,7 +97,10 @@ fn verification_time(c: &mut Criterion) {
                 &mints[..],
             )
             .unwrap();
-        let proofs = iter::once(proof).cycle().take(BATCH_SIZE).collect::<Vec<_>>();
+        let proofs = iter::once(proof)
+            .cycle()
+            .take(BATCH_SIZE)
+            .collect::<Vec<_>>();
         group.throughput(Throughput::Elements(BATCH_SIZE as u64));
         group.bench_with_input(
             BenchmarkId::from_parameter(gens.ring_size()),

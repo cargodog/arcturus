@@ -37,7 +37,7 @@ harness = false
 
 [package]
 name = "arcturus"
-version = "0.1.2"
+version = "0.2.0"
 authors = ["cargodog <cargodog@protonmail.com>"]
 edition = "2018"
 description = "Implementation of Arcturus zero-knowledge proofs for confidential transactions."

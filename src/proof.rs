@@ -208,17 +208,14 @@ impl ArcturusGens {
     /// spent output yields a unique 'spend tag'. To avoid double spends, the verifier should query
     /// this proof for all spend tags, and confirm no spend tag has been used in a previous
     /// transaction.
-    pub fn prove<'a, R>(
+    pub fn prove(
         &self,
         tscp: &mut Transcript,
-        ring: R,
+        ring: &[Output],
         idxs: &[usize],
         spends: &[SpendSecret],
         mints: &[MintSecret],
-    ) -> ArcturusResult<ArcturusProof>
-    where
-        R: IntoIterator<Item = &'a Output>,
-    {
+    ) -> ArcturusResult<ArcturusProof> {
         tscp.arcturus_domain_sep(self.n as u64, self.m as u64);
 
         if idxs.len() != spends.len() {
@@ -467,15 +464,12 @@ impl ArcturusGens {
     }
 
     /// Verify the minted outputs from a batch of proofs are valid spends of existing outputs in the ring
-    pub fn verify<'a, R>(
+    pub fn verify(
         &self,
         tscp: &mut Transcript,
-        ring: R,
-        proofs: &'a [ArcturusProof],
-    ) -> ArcturusResult<()>
-    where
-        R: IntoIterator<Item = &'a Output> + Clone,
-    {
+        ring: &[Output],
+        proofs: &[ArcturusProof],
+    ) -> ArcturusResult<()> {
         for p in proofs.iter() {
             if p.X_j.len() != self.m
                 || p.Y_j.len() != self.m
@@ -568,8 +562,8 @@ impl ArcturusGens {
             .iter()
             .map(|p| p.mints.iter().map(|O| &O.commit))
             .flatten();
-        let points_M_k = ring.clone().into_iter().take(ring_size).map(|O| &O.pubkey);
-        let points_P_k = ring.clone().into_iter().take(ring_size).map(|O| &O.commit);
+        let points_M_k = ring.into_iter().take(ring_size).map(|O| &O.pubkey);
+        let points_P_k = ring.into_iter().take(ring_size).map(|O| &O.commit);
 
         // Chain all points into a single iterator
         let points = points_G
@@ -957,11 +951,11 @@ mod tests {
                 .unwrap();
 
             let mut t = Transcript::new(b"Arcturus-Test");
-            assert!(gens.verify(&mut t, &ring, &[proof.clone()]).is_ok());
+            assert!(gens.verify(&mut t, &ring[..], &[proof.clone()]).is_ok());
             proofs.push(proof);
         }
         let mut t = Transcript::new(b"Arcturus-Test");
-        assert!(gens.verify(&mut t, &ring, &proofs[..]).is_ok());
+        assert!(gens.verify(&mut t, &ring[..], &proofs[..]).is_ok());
     }
 
     #[test]
