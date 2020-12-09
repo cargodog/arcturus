@@ -222,6 +222,13 @@ impl ArcturusGens {
             return Err(ArcturusError::BadArg);
         }
 
+        // First make sure the mints and spends balance to zero
+        if spends.iter().map(|s| s.amount).sum::<Scalar>()
+            != mints.iter().map(|m| m.amount).sum::<Scalar>()
+        {
+            return Err(ArcturusError::MintsAndSpendsImbalance);
+        }
+
         let u = idxs.len();
 
         // Create a `TranscriptRng` from the high-level witness data
@@ -661,8 +668,7 @@ impl ArcturusGens {
                     .map(|(mu_coeff, f_coeff)| mu_coeff * f_coeff)
                     .sum::<Scalar>()
             });
-        let factors_P_k = coeff_f_kp
-            .map(|coeff_f_p| coeff_f_p.sum::<Scalar>());
+        let factors_P_k = coeff_f_kp.map(|coeff_f_p| coeff_f_p.sum::<Scalar>());
 
         // Chain all scalar factors into single iterator
         let scalars = factors_G
@@ -1080,5 +1086,63 @@ mod tests {
                 assert_eq!(mint, &mints[i].to_output());
             }
         }
+    }
+
+    #[test]
+    fn prove_errors() {
+        let gens = ArcturusGens::new(2, 5, 8).unwrap();
+
+        // Build a random ring of outputs
+        let mut ring = (0..gens.ring_size())
+            .map(|_| {
+                Output::new(
+                    RistrettoPoint::random(&mut OsRng),
+                    RistrettoPoint::random(&mut OsRng),
+                )
+            })
+            .collect::<Vec<_>>();
+
+        // Lets build our outputs
+        let mut idxs = Vec::new();
+        for i in 0..3 {
+            idxs.push(i);
+        }
+        let mut spends = Vec::new();
+        let mut mints = Vec::new();
+        for &idx in &idxs {
+            let privkey = Scalar::random(&mut OsRng);
+            let pubkey = RistrettoPoint::random(&mut OsRng);
+            let amount = 6600;
+            let blind_spend = Scalar::random(&mut OsRng);
+            let blind_mint = Scalar::random(&mut OsRng);
+            let spend = SpendSecret::new(privkey, amount, blind_spend);
+            let mint = MintSecret::new(pubkey, amount, blind_mint);
+            ring[idx] = spend.to_output();
+            spends.push(spend);
+            mints.push(mint);
+        }
+
+        // First make sure the proof succeeds
+        assert!(gens
+            .prove(
+                &mut Transcript::new(b"Arcturus-Test"),
+                &ring[..],
+                &idxs[..],
+                &spends[..],
+                &mints[..],
+            )
+            .is_ok());
+
+        // Now remove a spend, so that the mints and spends no longer balance.
+        spends.pop();
+        assert!(gens
+            .prove(
+                &mut Transcript::new(b"Arcturus-Test"),
+                &ring[..],
+                &idxs[..],
+                &spends[..],
+                &mints[..],
+            )
+            .is_err());
     }
 }
