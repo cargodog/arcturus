@@ -12,12 +12,14 @@ use curve25519_dalek::scalar::Scalar;
 use curve25519_dalek::traits::{IsIdentity, MultiscalarMul, VartimeMultiscalarMul};
 use merlin::Transcript;
 use polynomials::Polynomial;
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "std")]
 use std::vec::Vec;
 
 /// An output consists of a public key and a value commitment
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Output {
     pubkey: RistrettoPoint,
     commit: RistrettoPoint,
@@ -30,7 +32,8 @@ impl Output {
 }
 
 /// Secret data needed to spend an existing [`Output`]
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct SpendSecret {
     privkey: Scalar,
     amount: Scalar,
@@ -61,7 +64,8 @@ impl SpendSecret {
 }
 
 /// Secret data needed to mint a new [`Output`]
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct MintSecret {
     pubkey: RistrettoPoint,
     amount: Scalar,
@@ -88,7 +92,8 @@ impl MintSecret {
 }
 
 /// Zero-knowledge proof that some minted outputs are valid spends of existing outputs in a ring
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct ArcturusProof {
     mints: Vec<Output>,
     A: RistrettoPoint,
@@ -125,7 +130,8 @@ impl ArcturusProof {
 }
 
 /// Generators and proof context necessary to prove and verify Arcturus proofs.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct ArcturusGens {
     n: usize,
     m: usize,
