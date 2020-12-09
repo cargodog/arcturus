@@ -662,7 +662,6 @@ impl ArcturusGens {
                     .sum::<Scalar>()
             });
         let factors_P_k = coeff_f_kp
-            .clone()
             .map(|coeff_f_p| coeff_f_p.sum::<Scalar>());
 
         // Chain all scalar factors into single iterator
