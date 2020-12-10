@@ -1,8 +1,7 @@
 //! A light-weight and performant implementation of the Arcturus zero-knowledge proof system
 //! [[link](https://eprint.iacr.org/2020/312)].
 
-#![no_std]
-#![feature(test)]
+#![cfg_attr(not(feature = "std"), no_std)]
 
 //-----------------------------------------------------------------------------
 // External dependencies:
@@ -14,10 +13,6 @@ extern crate polynomials;
 #[cfg(not(feature = "std"))]
 #[macro_use]
 extern crate alloc;
-
-#[cfg(feature = "std")]
-#[macro_use]
-extern crate std;
 
 //-----------------------------------------------------------------------------
 // Public modules

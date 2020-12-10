@@ -5,7 +5,7 @@ polynomials = "0.2"
 [dependencies.curve25519-dalek]
 default-features = false
 version = "3.0"
-features = ["nightly", "serde", "alloc"]
+features = ["serde", "alloc"]
 
 [dependencies.blake2]
 default-features = false
