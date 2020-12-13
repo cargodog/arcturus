@@ -346,14 +346,15 @@ impl ArcturusGens {
             tscp.append_point(b"J", &J.compress());
         }
 
-        let mu_seed = tscp.challenge_scalar(b"mu_seed");
+        let mut mu_k = exp_iter(tscp.challenge_scalar(b"mu"));
+        mu_k.next(); // Skip mu^0
 
         // Build X_j, Y_j, & Z_j
         let mut ring_count = 0;
         let (mut X_j, y_j, mut Z_j) = ring
             .into_iter()
             .map(|output| (output.pubkey, output.commit))
-            .zip((0..).map(|k| compute_mu_coeff(&mu_seed, k)))
+            .zip(mu_k.clone())
             .enumerate()
             .map(|(k, ((M, P), mu))| {
                 ring_count += 1;
@@ -441,7 +442,7 @@ impl ArcturusGens {
             .zip(spends.iter().map(|output| output.privkey))
             .zip(rho_uj.iter())
             .map(|((&l, r), rho_j)| {
-                compute_mu_coeff(&mu_seed, l) * r * x_exp_m
+                mu_k.clone().nth(l).unwrap() * r * x_exp_m
                     - exp_iter(x)
                         .zip(rho_j.iter())
                         .map(|(exp_x, rho)| rho * exp_x)
@@ -495,7 +496,7 @@ impl ArcturusGens {
         }
 
         let ring_size = self.ring_size();
-        let mut mu_seed_p = Vec::new();
+        let mut mu_pk = Vec::new();
         let mut x_p = Vec::new();
         tscp.arcturus_domain_sep(self.n as u64, self.m as u64);
         for p in proofs {
@@ -511,7 +512,9 @@ impl ArcturusGens {
             for J in &p.J_u {
                 t.validate_and_append_point(b"J", &J.compress())?;
             }
-            mu_seed_p.push(t.challenge_scalar(b"mu_seed"));
+            let mut mu_k = exp_iter(t.challenge_scalar(b"mu"));
+            mu_k.next(); // Skip mu^0
+            mu_pk.push(mu_k);
             for X in &p.X_j {
                 t.validate_and_append_point(b"X", &X.compress())?;
             }
@@ -543,17 +546,13 @@ impl ArcturusGens {
         let u_max = proofs.iter().map(|p| p.f_uji.len()).max().unwrap();
 
         // Ring coefficients computed from f_uji from each proof
-        let coeff_f_kp = (0..ring_size).map(|k| {
-            proofs
-                .iter()
-                .zip(x_p.iter())
-                .map(move |(p, x)| compute_f_coeff(k, x, self.n, self.m, &p.f_uji))
-        });
-        let coeff_mu_kp = (0..ring_size).map(|k| {
-            mu_seed_p
-                .iter()
-                .map(move |mu_seed| compute_mu_coeff(mu_seed, k))
-        });
+        let coeff_f_pk = proofs
+            .iter()
+            .zip(x_p.iter())
+            .map(move |(p, x)| {
+                (0..ring_size).map(move |k| compute_f_coeff(k, x, self.n, self.m, &p.f_uji))
+            })
+            .collect::<Vec<_>>();
 
         // Each of equations (1), (2), (3), (4), & (5) are comprised of terms of point
         // multiplications. Below we collect each point to be multiplied, and compute the
@@ -605,13 +604,13 @@ impl ArcturusGens {
                 - proofs.iter().map(|p| p.zS).sum::<Scalar>(),
         );
         let factors_U = once(
-            coeff_mu_kp
+            mu_pk
                 .clone()
-                .zip(coeff_f_kp.clone())
-                .map(|(mu_coeffs_p, coeff_f_p)| {
-                    mu_coeffs_p
-                        .zip(coeff_f_p)
-                        .map(|(mu_coeff, f_coeff)| mu_coeff * f_coeff)
+                .into_iter()
+                .zip(coeff_f_pk.clone())
+                .map(|(mu_k, coeff_f_k)| {
+                    mu_k.zip(coeff_f_k)
+                        .map(|(mu, coeff_f)| mu * coeff_f)
                         .sum::<Scalar>()
                 })
                 .sum::<Scalar>(),
@@ -666,15 +665,24 @@ impl ArcturusGens {
             .zip(x_p.iter())
             .map(|(p, &x)| repeat(-exp_iter(x).nth(self.m).unwrap()).take(p.mints.len()))
             .flatten();
-        let factors_M_k = coeff_mu_kp
-            .zip(coeff_f_kp.clone())
-            .map(|(mu_coeffs_p, coeff_f_p)| {
-                mu_coeffs_p
-                    .zip(coeff_f_p)
-                    .map(|(mu_coeff, f_coeff)| mu_coeff * f_coeff)
-                    .sum::<Scalar>()
+        let factors_M_k =
+            (0..ring_size).scan((mu_pk, coeff_f_pk.clone()), |(mu_pk, coeff_f_pk), _| {
+                let mut sum = Scalar::zero();
+                for (mu_k, coeff_f_k) in mu_pk.into_iter().zip(coeff_f_pk.into_iter()) {
+                    let mu = mu_k.next().unwrap();
+                    let coeff_f = coeff_f_k.next().unwrap();
+                    sum += mu * coeff_f;
+                }
+                Some(sum)
             });
-        let factors_P_k = coeff_f_kp.map(|coeff_f_p| coeff_f_p.sum::<Scalar>());
+        let factors_P_k = (0..ring_size).scan(coeff_f_pk.clone(), |coeff_f_pk, _| {
+            let mut sum = Scalar::zero();
+            for coeff_f_k in coeff_f_pk.into_iter() {
+                let coeff_f = coeff_f_k.next().unwrap();
+                sum += coeff_f;
+            }
+            Some(sum)
+        });
 
         // Chain all scalar factors into single iterator
         let scalars = factors_G
@@ -791,11 +799,6 @@ fn convert_base(num: usize, base: usize, digits: usize) -> Vec<usize> {
         j += 1;
     }
     x_j
-}
-
-#[inline]
-fn compute_mu_coeff(seed: &Scalar, k: usize) -> Scalar {
-    Scalar::hash_from_bytes::<Blake2b>(&(seed + Scalar::from(k as u64)).to_bytes())
 }
 
 #[inline]
