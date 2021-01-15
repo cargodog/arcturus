@@ -495,7 +495,7 @@ impl ArcturusGens {
             }
         }
 
-        let ring_size = self.ring_size();
+        // Compute `x` and `mu_k` for each proof
         let mut mu_pk = Vec::new();
         let mut x_p = Vec::new();
         tscp.arcturus_domain_sep(self.n as u64, self.m as u64);
@@ -550,7 +550,7 @@ impl ArcturusGens {
             .iter()
             .zip(x_p.iter())
             .map(move |(p, x)| {
-                (0..ring_size).map(move |k| compute_f_coeff(k, x, self.n, self.m, &p.f_uji))
+                (0..self.ring_size()).map(move |k| compute_f_coeff(k, x, self.n, self.m, &p.f_uji))
             })
             .collect::<Vec<_>>();
 
@@ -574,8 +574,8 @@ impl ArcturusGens {
             .iter()
             .map(|p| p.mints.iter().map(|O| &O.commit))
             .flatten();
-        let points_M_k = ring.into_iter().take(ring_size).map(|O| &O.pubkey);
-        let points_P_k = ring.into_iter().take(ring_size).map(|O| &O.commit);
+        let points_M_k = ring.into_iter().take(self.ring_size()).map(|O| &O.pubkey);
+        let points_P_k = ring.into_iter().take(self.ring_size()).map(|O| &O.commit);
 
         // Chain all points into a single iterator
         let points = points_G
@@ -666,7 +666,7 @@ impl ArcturusGens {
             .map(|(p, &x)| repeat(-exp_iter(x).nth(self.m).unwrap()).take(p.mints.len()))
             .flatten();
         let factors_M_k =
-            (0..ring_size).scan((mu_pk, coeff_f_pk.clone()), |(mu_pk, coeff_f_pk), _| {
+            (0..self.ring_size()).scan((mu_pk, coeff_f_pk.clone()), |(mu_pk, coeff_f_pk), _| {
                 let mut sum = Scalar::zero();
                 for (mu_k, coeff_f_k) in mu_pk.into_iter().zip(coeff_f_pk.into_iter()) {
                     let mu = mu_k.next().unwrap();
@@ -675,7 +675,7 @@ impl ArcturusGens {
                 }
                 Some(sum)
             });
-        let factors_P_k = (0..ring_size).scan(coeff_f_pk.clone(), |coeff_f_pk, _| {
+        let factors_P_k = (0..self.ring_size()).scan(coeff_f_pk.clone(), |coeff_f_pk, _| {
             let mut sum = Scalar::zero();
             for coeff_f_k in coeff_f_pk.into_iter() {
                 let coeff_f = coeff_f_k.next().unwrap();
