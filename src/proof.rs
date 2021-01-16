@@ -603,7 +603,7 @@ impl ArcturusGens {
             .chain(points_P_k);
 
         // Next, collect all scalar factors to be multiplied with the aforementioned points
-        let factors_G = once(
+        let scalars_G = once(
             proofs.iter().map(|p| p.zA).sum::<Scalar>()
                 + proofs.iter().map(|p| p.zC).sum::<Scalar>()
                 - proofs
@@ -612,7 +612,7 @@ impl ArcturusGens {
                     .sum::<Scalar>()
                 - proofs.iter().map(|p| p.zS).sum::<Scalar>(),
         );
-        let factors_U = once(
+        let scalars_U = once(
             mu_pk
                 .clone()
                 .into_iter()
@@ -624,7 +624,7 @@ impl ArcturusGens {
                 })
                 .sum::<Scalar>(),
         );
-        let factors_H_uji = f_puji
+        let scalars_H_uji = f_puji
             .zip(x_p.iter())
             .map(|(f_uji, x)| {
                 // Combination of terms from equations (1) & (2)
@@ -640,32 +640,32 @@ impl ArcturusGens {
                 |acc_uji, e_uji| acc_uji.iter().zip(e_uji).map(|(acc, e)| acc + e).collect(),
             )
             .into_iter();
-        let factors_A_p = repeat(-Scalar::one()).take(proofs.len());
-        let factors_B_p = x_p.iter().map(|x| -x);
-        let factors_C_p = x_p.iter().map(|x| -x);
-        let factors_D_p = repeat(-Scalar::one()).take(proofs.len());
-        let factors_X_pj = x_p
+        let scalars_A_p = repeat(-Scalar::one()).take(proofs.len());
+        let scalars_B_p = x_p.iter().map(|x| -x);
+        let scalars_C_p = x_p.iter().map(|x| -x);
+        let scalars_D_p = repeat(-Scalar::one()).take(proofs.len());
+        let scalars_X_pj = x_p
             .iter()
             .map(|&x| exp_iter(x).take(self.m))
             .flatten()
             .map(|n| -n);
-        let factors_Y_pj = x_p
+        let scalars_Y_pj = x_p
             .iter()
             .map(|&x| exp_iter(x).take(self.m))
             .flatten()
             .map(|n| -n);
-        let factors_Z_pj = x_p
+        let scalars_Z_pj = x_p
             .iter()
             .map(|&x| exp_iter(x).take(self.m))
             .flatten()
             .map(|n| -n);
-        let factors_J_pu = proofs.iter().map(|p| p.zR_u.iter()).flatten().map(|n| -n);
-        let factors_Q_pt = proofs
+        let scalars_J_pu = proofs.iter().map(|p| p.zR_u.iter()).flatten().map(|n| -n);
+        let scalars_Q_pt = proofs
             .iter()
             .zip(x_p.iter())
             .map(|(p, &x)| repeat(-exp_iter(x).nth(self.m).unwrap()).take(p.mints.len()))
             .flatten();
-        let factors_M_k =
+        let scalars_M_k =
             (0..self.ring_size()).scan((mu_pk, f_poly_pk.clone()), |(mu_pk, f_poly_pk), _| {
                 let mut sum = Scalar::zero();
                 for (mu_k, f_poly_k) in mu_pk.into_iter().zip(f_poly_pk.into_iter()) {
@@ -675,7 +675,7 @@ impl ArcturusGens {
                 }
                 Some(sum)
             });
-        let factors_P_k = (0..self.ring_size()).scan(f_poly_pk.clone(), |f_poly_pk, _| {
+        let scalars_P_k = (0..self.ring_size()).scan(f_poly_pk.clone(), |f_poly_pk, _| {
             let mut sum = Scalar::zero();
             for f_poly_k in f_poly_pk.into_iter() {
                 let f_poly = f_poly_k.next().unwrap();
@@ -685,20 +685,20 @@ impl ArcturusGens {
         });
 
         // Chain all scalar factors into single iterator
-        let scalars = factors_G
-            .chain(factors_U)
-            .chain(factors_H_uji)
-            .chain(factors_A_p)
-            .chain(factors_B_p)
-            .chain(factors_C_p)
-            .chain(factors_D_p)
-            .chain(factors_X_pj)
-            .chain(factors_Y_pj)
-            .chain(factors_Z_pj)
-            .chain(factors_J_pu)
-            .chain(factors_Q_pt)
-            .chain(factors_M_k)
-            .chain(factors_P_k);
+        let scalars = scalars_G
+            .chain(scalars_U)
+            .chain(scalars_H_uji)
+            .chain(scalars_A_p)
+            .chain(scalars_B_p)
+            .chain(scalars_C_p)
+            .chain(scalars_D_p)
+            .chain(scalars_X_pj)
+            .chain(scalars_Y_pj)
+            .chain(scalars_Z_pj)
+            .chain(scalars_J_pu)
+            .chain(scalars_Q_pt)
+            .chain(scalars_M_k)
+            .chain(scalars_P_k);
 
         // Evaluate everything as a single multiscalar multiplication
         //
