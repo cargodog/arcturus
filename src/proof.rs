@@ -496,8 +496,8 @@ impl ArcturusGens {
         }
 
         // Compute `x` and `mu_k` for each proof
-        let mut mu_pk = Vec::new();
-        let mut x_p = Vec::new();
+        let mut mu_pk = Vec::with_capacity(proofs.len());
+        let mut x_p = Vec::with_capacity(proofs.len());
         tscp.arcturus_domain_sep(self.n as u64, self.m as u64);
         for p in proofs {
             let mut t = tscp.clone();
@@ -514,7 +514,7 @@ impl ArcturusGens {
             }
             let mut mu_k = exp_iter(t.challenge_scalar(b"mu"));
             mu_k.next(); // Skip mu^0
-            mu_pk.push(mu_k);
+            mu_pk.push(mu_k.take(self.ring_size()).collect::<Vec<_>>());
             for X in &p.X_j {
                 t.validate_and_append_point(b"X", &X.compress())?;
             }
@@ -559,9 +559,11 @@ impl ArcturusGens {
             .iter()
             .zip(x_p.iter())
             .map(move |(p, x)| {
-                (0..self.ring_size()).map(move |k| compute_f_coeff(k, x, self.n, self.m, &p.f_uji))
+                (0..self.ring_size())
+                    .map(move |k| compute_f_coeff(k, x, self.n, self.m, &p.f_uji))
+                    .collect()
             })
-            .collect::<Vec<_>>();
+            .collect::<Vec<Vec<_>>>();
 
         // Each of equations (1), (2), (3), (4), & (5) are comprised of terms of point
         // multiplications. Below we collect each point to be multiplied, and compute the
@@ -614,11 +616,11 @@ impl ArcturusGens {
         );
         let scalars_U = once(
             mu_pk
-                .clone()
-                .into_iter()
-                .zip(f_poly_pk.clone())
+                .iter()
+                .zip(f_poly_pk.iter())
                 .map(|(mu_k, f_poly_k)| {
-                    mu_k.zip(f_poly_k)
+                    mu_k.iter()
+                        .zip(f_poly_k)
                         .map(|(mu, f_poly)| mu * f_poly)
                         .sum::<Scalar>()
                 })
@@ -665,24 +667,15 @@ impl ArcturusGens {
             .zip(x_p.iter())
             .map(|(p, &x)| repeat(-exp_iter(x).nth(self.m).unwrap()).take(p.mints.len()))
             .flatten();
-        let scalars_M_k =
-            (0..self.ring_size()).scan((mu_pk, f_poly_pk.clone()), |(mu_pk, f_poly_pk), _| {
-                let mut sum = Scalar::zero();
-                for (mu_k, f_poly_k) in mu_pk.into_iter().zip(f_poly_pk.into_iter()) {
-                    let mu = mu_k.next().unwrap();
-                    let f_poly = f_poly_k.next().unwrap();
-                    sum += mu * f_poly;
-                }
-                Some(sum)
-            });
-        let scalars_P_k = (0..self.ring_size()).scan(f_poly_pk.clone(), |f_poly_pk, _| {
-            let mut sum = Scalar::zero();
-            for f_poly_k in f_poly_pk.into_iter() {
-                let f_poly = f_poly_k.next().unwrap();
-                sum += f_poly;
-            }
-            Some(sum)
+        let scalars_M_k = (0..self.ring_size()).map(|k| {
+            mu_pk
+                .iter()
+                .zip(f_poly_pk.iter())
+                .map(|(mu_k, f_poly_k)| mu_k[k] * f_poly_k[k])
+                .sum()
         });
+        let scalars_P_k =
+            (0..self.ring_size()).map(|k| f_poly_pk.iter().map(|f_poly_k| f_poly_k[k]).sum());
 
         // Chain all scalar factors into single iterator
         let scalars = scalars_G
