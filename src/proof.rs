@@ -555,7 +555,7 @@ impl ArcturusGens {
         let u_max = proofs.iter().map(|p| p.f_uji.len()).max().unwrap();
 
         // Ring coefficients computed from f_uji from each proof
-        let coeff_f_pk = proofs
+        let f_poly_pk = proofs
             .iter()
             .zip(x_p.iter())
             .map(move |(p, x)| {
@@ -616,10 +616,10 @@ impl ArcturusGens {
             mu_pk
                 .clone()
                 .into_iter()
-                .zip(coeff_f_pk.clone())
-                .map(|(mu_k, coeff_f_k)| {
-                    mu_k.zip(coeff_f_k)
-                        .map(|(mu, coeff_f)| mu * coeff_f)
+                .zip(f_poly_pk.clone())
+                .map(|(mu_k, f_poly_k)| {
+                    mu_k.zip(f_poly_k)
+                        .map(|(mu, f_poly)| mu * f_poly)
                         .sum::<Scalar>()
                 })
                 .sum::<Scalar>(),
@@ -666,20 +666,20 @@ impl ArcturusGens {
             .map(|(p, &x)| repeat(-exp_iter(x).nth(self.m).unwrap()).take(p.mints.len()))
             .flatten();
         let factors_M_k =
-            (0..self.ring_size()).scan((mu_pk, coeff_f_pk.clone()), |(mu_pk, coeff_f_pk), _| {
+            (0..self.ring_size()).scan((mu_pk, f_poly_pk.clone()), |(mu_pk, f_poly_pk), _| {
                 let mut sum = Scalar::zero();
-                for (mu_k, coeff_f_k) in mu_pk.into_iter().zip(coeff_f_pk.into_iter()) {
+                for (mu_k, f_poly_k) in mu_pk.into_iter().zip(f_poly_pk.into_iter()) {
                     let mu = mu_k.next().unwrap();
-                    let coeff_f = coeff_f_k.next().unwrap();
-                    sum += mu * coeff_f;
+                    let f_poly = f_poly_k.next().unwrap();
+                    sum += mu * f_poly;
                 }
                 Some(sum)
             });
-        let factors_P_k = (0..self.ring_size()).scan(coeff_f_pk.clone(), |coeff_f_pk, _| {
+        let factors_P_k = (0..self.ring_size()).scan(f_poly_pk.clone(), |f_poly_pk, _| {
             let mut sum = Scalar::zero();
-            for coeff_f_k in coeff_f_pk.into_iter() {
-                let coeff_f = coeff_f_k.next().unwrap();
-                sum += coeff_f;
+            for f_poly_k in f_poly_pk.into_iter() {
+                let f_poly = f_poly_k.next().unwrap();
+                sum += f_poly;
             }
             Some(sum)
         });
