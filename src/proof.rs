@@ -543,6 +543,15 @@ impl ArcturusGens {
             })
             .collect::<Vec<Vec<Vec<_>>>>();
 
+        // Join f_puj0 & each of p.f_uji to create f_puji
+        let f_puji = f_puj0.iter().zip(proofs.iter()).map(|(f_uj0, p)| {
+            f_uj0.iter().zip(p.f_uji.iter()).map(|(f_j0, f_ji)| {
+                f_j0.iter()
+                    .zip(f_ji.iter())
+                    .map(|(f_0, f_i)| once(f_0).chain(f_i.iter()))
+            })
+        });
+
         let u_max = proofs.iter().map(|p| p.f_uji.len()).max().unwrap();
 
         // Ring coefficients computed from f_uji from each proof
@@ -615,16 +624,7 @@ impl ArcturusGens {
                 })
                 .sum::<Scalar>(),
         );
-        let factors_H_uji = proofs
-            .iter()
-            .zip(f_puj0.iter())
-            .map(|(p, f_uj0)| {
-                p.f_uji.iter().zip(f_uj0.iter()).map(|(f_ji, f_j0)| {
-                    f_ji.iter()
-                        .zip(f_j0.iter())
-                        .map(|(f_i, f_0)| once(f_0).chain(f_i.iter()))
-                })
-            })
+        let factors_H_uji = f_puji
             .zip(x_p.iter())
             .map(|(f_uji, x)| {
                 // Combination of terms from equations (1) & (2)
