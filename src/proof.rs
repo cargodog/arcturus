@@ -626,22 +626,16 @@ impl ArcturusGens {
                 })
                 .sum::<Scalar>(),
         );
-        let scalars_H_uji = f_puji
-            .zip(x_p.iter())
-            .map(|(f_uji, x)| {
-                // Combination of terms from equations (1) & (2)
-                f_uji
-                    .flatten()
-                    .flatten()
-                    .map(move |f| f + f * (x - f))
-                    .chain(repeat(Scalar::zero()))
-                    .take(self.n * self.m * u_max)
-            })
-            .fold(
-                vec![Scalar::zero(); self.n * self.m * u_max],
-                |acc_uji, e_uji| acc_uji.iter().zip(e_uji).map(|(acc, e)| acc + e).collect(),
-            )
-            .into_iter();
+        let scalars_H_uji = (0..self.n * self.m * u_max).map(|l| {
+            f_puji
+                .clone()
+                .zip(x_p.iter())
+                .map(|(f_uji, x)| {
+                    let f = f_uji.flatten().flatten().nth(l).unwrap();
+                    f + f * (x - f) // Combination of terms from equations (1) & (2)
+                })
+                .sum::<Scalar>()
+        });
         let scalars_A_p = repeat(-Scalar::one()).take(proofs.len());
         let scalars_B_p = x_p.iter().map(|x| -x);
         let scalars_C_p = x_p.iter().map(|x| -x);
