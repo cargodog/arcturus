@@ -12,6 +12,7 @@ use curve25519_dalek::scalar::Scalar;
 use curve25519_dalek::traits::{IsIdentity, MultiscalarMul, VartimeMultiscalarMul};
 use merlin::Transcript;
 use polynomials::Polynomial;
+use rand::thread_rng;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "std")]
@@ -255,7 +256,6 @@ impl ArcturusGens {
                 builder = builder.rekey_with_witness_bytes(b"amount", m.amount.as_bytes());
                 builder = builder.rekey_with_witness_bytes(b"blind", m.blind.as_bytes());
             }
-            use rand::thread_rng;
             builder.finalize(&mut thread_rng())
         };
 
@@ -495,10 +495,11 @@ impl ArcturusGens {
             }
         }
 
+        tscp.arcturus_domain_sep(self.n as u64, self.m as u64);
+
         // Compute `x` and `mu_k` for each proof
         let mut mu_pk = Vec::with_capacity(proofs.len());
         let mut x_p = Vec::with_capacity(proofs.len());
-        tscp.arcturus_domain_sep(self.n as u64, self.m as u64);
         for p in proofs {
             let mut t = tscp.clone();
             for O in &p.mints {
@@ -526,6 +527,28 @@ impl ArcturusGens {
             }
             x_p.push(t.challenge_scalar(b"x"));
         }
+
+        // To efficiently verify a proof in a single multiexponentiation, each
+        // inequality in the protocol is joined into one large inequality. To
+        // prevent an attacker from selecting terms that break the
+        // relationships guaranteed by the individual inequalities, the
+        // verifier must randomly weight each of the terms. Similarly, since we
+        // also verify multiple proofs in batch, the terms from each proof must
+        // have unique weights as well.
+        //
+        // See the below resources for more explanation:
+        //   * https://github.com/cargodog/arcturus/issues/28
+        //   * https://eprint.iacr.org/2017/1066
+        //
+        // Accordingly, we generate 5 random weights for each of the 5
+        // inequalities in this proof protocol, for each proof being verified.
+        // Subsequently, all terms pertaining to the first proof proof and the
+        // second inequality (labeled (2) in the Arcuturs paper), will be
+        // weighted by `wt_[0][1].
+        let mut rng = tscp.build_rng().finalize(&mut thread_rng());
+        let wt_pn = (0..proofs.len())
+            .map(|_| (0..5).map(|_| Scalar::random(&mut rng)).collect())
+            .collect::<Vec<Vec<_>>>();
 
         // Compute each f_uj0 from each proof's f_uji (where i = [1..n])
         let f_puj0 = proofs
@@ -606,22 +629,36 @@ impl ArcturusGens {
 
         // Next, collect all scalar factors to be multiplied with the aforementioned points
         let scalars_G = once(
-            proofs.iter().map(|p| p.zA).sum::<Scalar>()
-                + proofs.iter().map(|p| p.zC).sum::<Scalar>()
+            proofs
+                .iter()
+                .zip(wt_pn.iter())
+                .map(|(p, wt_n)| wt_n[0] * p.zA)
+                .sum::<Scalar>()
+                + proofs
+                    .iter()
+                    .zip(wt_pn.iter())
+                    .map(|(p, wt_n)| wt_n[1] * p.zC)
+                    .sum::<Scalar>()
                 - proofs
                     .iter()
-                    .map(|p| p.zR_u.iter().sum::<Scalar>())
+                    .zip(wt_pn.iter())
+                    .map(|(p, wt_n)| wt_n[2] * p.zR_u.iter().sum::<Scalar>())
                     .sum::<Scalar>()
-                - proofs.iter().map(|p| p.zS).sum::<Scalar>(),
+                - proofs
+                    .iter()
+                    .zip(wt_pn.iter())
+                    .map(|(p, wt_n)| wt_n[4] * p.zS)
+                    .sum::<Scalar>(),
         );
         let scalars_U = once(
             mu_pk
                 .iter()
                 .zip(f_poly_pk.iter())
-                .map(|(mu_k, f_poly_k)| {
+                .zip(wt_pn.iter())
+                .map(|((mu_k, f_poly_k), wt_n)| {
                     mu_k.iter()
                         .zip(f_poly_k)
-                        .map(|(mu, f_poly)| mu * f_poly)
+                        .map(|(mu, f_poly)| wt_n[3] * mu * f_poly)
                         .sum::<Scalar>()
                 })
                 .sum::<Scalar>(),
@@ -630,46 +667,61 @@ impl ArcturusGens {
             f_puji
                 .clone()
                 .zip(x_p.iter())
-                .map(|(f_uji, x)| {
+                .zip(wt_pn.iter())
+                .map(|((f_uji, x), wt_n)| {
                     let f = f_uji.flatten().flatten().nth(l).unwrap();
-                    f + f * (x - f) // Combination of terms from equations (1) & (2)
+                    wt_n[0] * f + wt_n[1] * f * (x - f) // Combination of terms from equations (1) & (2)
                 })
                 .sum::<Scalar>()
         });
-        let scalars_A_p = repeat(-Scalar::one()).take(proofs.len());
-        let scalars_B_p = x_p.iter().map(|x| -x);
-        let scalars_C_p = x_p.iter().map(|x| -x);
-        let scalars_D_p = repeat(-Scalar::one()).take(proofs.len());
+
+        let scalars_A_p = wt_pn.iter().map(|wt_n| -wt_n[0]);
+        let scalars_B_p = wt_pn.iter().zip(x_p.iter()).map(|(wt_n, x)| -wt_n[0] * x);
+        let scalars_C_p = wt_pn.iter().zip(x_p.iter()).map(|(wt_n, x)| -wt_n[1] * x);
+        let scalars_D_p = wt_pn.iter().map(|wt_n| -wt_n[1]);
         let scalars_X_pj = x_p
             .iter()
-            .map(|&x| exp_iter(x).take(self.m))
-            .flatten()
-            .map(|n| -n);
+            .zip(wt_pn.iter())
+            .map(|(&x, wt_n)| exp_iter(x).take(self.m).map(move |xj| -wt_n[2] * xj))
+            .flatten();
         let scalars_Y_pj = x_p
             .iter()
-            .map(|&x| exp_iter(x).take(self.m))
-            .flatten()
-            .map(|n| -n);
+            .zip(wt_pn.iter())
+            .map(|(&x, wt_n)| exp_iter(x).take(self.m).map(move |xj| -wt_n[3] * xj))
+            .flatten();
         let scalars_Z_pj = x_p
             .iter()
-            .map(|&x| exp_iter(x).take(self.m))
-            .flatten()
-            .map(|n| -n);
-        let scalars_J_pu = proofs.iter().map(|p| p.zR_u.iter()).flatten().map(|n| -n);
+            .zip(wt_pn.iter())
+            .map(|(&x, wt_n)| exp_iter(x).take(self.m).map(move |xj| -wt_n[4] * xj))
+            .flatten();
+        let scalars_J_pu = proofs
+            .iter()
+            .zip(wt_pn.iter())
+            .map(|(p, wt_n)| p.zR_u.iter().map(move |zR| -wt_n[3] * zR))
+            .flatten();
         let scalars_Q_pt = proofs
             .iter()
             .zip(x_p.iter())
-            .map(|(p, &x)| repeat(-exp_iter(x).nth(self.m).unwrap()).take(p.mints.len()))
+            .zip(wt_pn.iter())
+            .map(|((p, &x), wt_n)| {
+                repeat(-wt_n[4] * exp_iter(x).nth(self.m).unwrap()).take(p.mints.len())
+            })
             .flatten();
         let scalars_M_k = (0..self.ring_size()).map(|k| {
             mu_pk
                 .iter()
                 .zip(f_poly_pk.iter())
-                .map(|(mu_k, f_poly_k)| mu_k[k] * f_poly_k[k])
+                .zip(wt_pn.iter())
+                .map(|((mu_k, f_poly_k), wt_n)| wt_n[2] * mu_k[k] * f_poly_k[k])
                 .sum()
         });
-        let scalars_P_k =
-            (0..self.ring_size()).map(|k| f_poly_pk.iter().map(|f_poly_k| f_poly_k[k]).sum());
+        let scalars_P_k = (0..self.ring_size()).map(|k| {
+            f_poly_pk
+                .iter()
+                .zip(wt_pn.iter())
+                .map(|(f_poly_k, wt_n)| wt_n[4] * f_poly_k[k])
+                .sum()
+        });
 
         // Chain all scalar factors into single iterator
         let scalars = scalars_G
