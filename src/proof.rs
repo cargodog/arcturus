@@ -477,8 +477,18 @@ impl ArcturusGens {
         })
     }
 
-    /// Verify the minted outputs from a batch of proofs are valid spends of existing outputs in the ring
+    /// Verify in zero-knowledge that a proof is valid
     pub fn verify(
+        &self,
+        tscp: &mut Transcript,
+        ring: &[Output],
+        proof: ArcturusProof,
+    ) -> ArcturusResult<()> {
+        self.verify_batch(tscp, ring, &[proof])
+    }
+
+    /// Verify in zero-knowledge that a batch of proofs are valid
+    pub fn verify_batch(
         &self,
         tscp: &mut Transcript,
         ring: &[Output],
@@ -1004,11 +1014,13 @@ mod tests {
                 .unwrap();
 
             let mut t = Transcript::new(b"Arcturus-Test");
-            assert!(gens.verify(&mut t, &ring[..], &[proof.clone()]).is_ok());
+            assert!(gens
+                .verify_batch(&mut t, &ring[..], &[proof.clone()])
+                .is_ok());
             proofs.push(proof);
         }
         let mut t = Transcript::new(b"Arcturus-Test");
-        assert!(gens.verify(&mut t, &ring[..], &proofs[..]).is_ok());
+        assert!(gens.verify_batch(&mut t, &ring[..], &proofs[..]).is_ok());
     }
 
     #[test]
@@ -1066,11 +1078,11 @@ mod tests {
                 .unwrap();
 
             let mut t = Transcript::new(b"Arcturus-Test");
-            assert!(gens.verify(&mut t, &ring, &[proof.clone()]).is_ok());
+            assert!(gens.verify_batch(&mut t, &ring, &[proof.clone()]).is_ok());
             proofs.push(proof);
         }
         let mut t = Transcript::new(b"Arcturus-Test");
-        assert!(gens.verify(&mut t, &ring, &proofs[..]).is_ok());
+        assert!(gens.verify_batch(&mut t, &ring, &proofs[..]).is_ok());
     }
 
     #[test]
