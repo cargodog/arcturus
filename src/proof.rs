@@ -10,6 +10,7 @@ use curve25519_dalek::constants;
 use curve25519_dalek::ristretto::RistrettoPoint;
 use curve25519_dalek::scalar::Scalar;
 use curve25519_dalek::traits::{IsIdentity, MultiscalarMul, VartimeMultiscalarMul};
+use itertools::izip;
 use merlin::Transcript;
 use polynomials::Polynomial;
 use rand::thread_rng;
@@ -437,18 +438,19 @@ impl ArcturusGens {
                     .collect()
             })
             .collect();
-        let zR_u = idxs
-            .iter()
-            .zip(spends.iter().map(|output| output.privkey))
-            .zip(rho_uj.iter())
-            .map(|((&l, r), rho_j)| {
-                mu_k.clone().nth(l).unwrap() * r * x_exp_m
-                    - exp_iter(x)
-                        .zip(rho_j.iter())
-                        .map(|(exp_x, rho)| rho * exp_x)
-                        .sum::<Scalar>()
-            })
-            .collect::<Vec<_>>();
+        let zR_u = izip!(
+            idxs.iter(),
+            spends.iter().map(|output| output.privkey),
+            rho_uj.iter()
+        )
+        .map(|(&l, r, rho_j)| {
+            mu_k.clone().nth(l).unwrap() * r * x_exp_m
+                - exp_iter(x)
+                    .zip(rho_j.iter())
+                    .map(|(exp_x, rho)| rho * exp_x)
+                    .sum::<Scalar>()
+        })
+        .collect::<Vec<_>>();
         let zS = x_exp_m
             * (spends.iter().map(|s| s.blind).sum::<Scalar>()
                 - mints.iter().map(|m| m.blind).sum::<Scalar>())
@@ -661,11 +663,8 @@ impl ArcturusGens {
                     .sum::<Scalar>(),
         );
         let scalars_U = once(
-            mu_pk
-                .iter()
-                .zip(f_poly_pk.iter())
-                .zip(wt_pn.iter())
-                .map(|((mu_k, f_poly_k), wt_n)| {
+            izip!(mu_pk.iter(), f_poly_pk.iter(), wt_pn.iter())
+                .map(|(mu_k, f_poly_k, wt_n)| {
                     mu_k.iter()
                         .zip(f_poly_k)
                         .map(|(mu, f_poly)| wt_n[3] * mu * f_poly)
@@ -674,11 +673,8 @@ impl ArcturusGens {
                 .sum::<Scalar>(),
         );
         let scalars_H_uji = (0..self.n * self.m * u_max).map(|l| {
-            f_puji
-                .clone()
-                .zip(x_p.iter())
-                .zip(wt_pn.iter())
-                .map(|((f_uji, x), wt_n)| {
+            izip!(f_puji.clone(), x_p.iter(), wt_pn.iter())
+                .map(|(f_uji, x, wt_n)| {
                     let f = f_uji.flatten().flatten().nth(l).unwrap();
                     wt_n[0] * f + wt_n[1] * f * (x - f) // Combination of terms from equations (1) & (2)
                 })
@@ -709,20 +705,14 @@ impl ArcturusGens {
             .zip(wt_pn.iter())
             .map(|(p, wt_n)| p.zR_u.iter().map(move |zR| -wt_n[3] * zR))
             .flatten();
-        let scalars_Q_pt = proofs
-            .iter()
-            .zip(x_p.iter())
-            .zip(wt_pn.iter())
-            .map(|((p, &x), wt_n)| {
+        let scalars_Q_pt = izip!(proofs.iter(), x_p.iter(), wt_pn.iter())
+            .map(|(p, &x, wt_n)| {
                 repeat(-wt_n[4] * exp_iter(x).nth(self.m).unwrap()).take(p.mints.len())
             })
             .flatten();
         let scalars_M_k = (0..self.ring_size()).map(|k| {
-            mu_pk
-                .iter()
-                .zip(f_poly_pk.iter())
-                .zip(wt_pn.iter())
-                .map(|((mu_k, f_poly_k), wt_n)| wt_n[2] * mu_k[k] * f_poly_k[k])
+            izip!(mu_pk.iter(), f_poly_pk.iter(), wt_pn.iter())
+                .map(|(mu_k, f_poly_k, wt_n)| wt_n[2] * mu_k[k] * f_poly_k[k])
                 .sum()
         });
         let scalars_P_k = (0..self.ring_size()).map(|k| {

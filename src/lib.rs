@@ -6,13 +6,13 @@
 //-----------------------------------------------------------------------------
 // External dependencies:
 //-----------------------------------------------------------------------------
-extern crate blake2;
-extern crate curve25519_dalek;
-extern crate polynomials;
-
 #[cfg(not(feature = "std"))]
 #[macro_use]
 extern crate alloc;
+extern crate blake2;
+extern crate curve25519_dalek;
+extern crate itertools;
+extern crate polynomials;
 
 //-----------------------------------------------------------------------------
 // Public modules
