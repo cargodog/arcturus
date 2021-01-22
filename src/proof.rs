@@ -303,9 +303,7 @@ impl ArcturusGens {
         );
 
         // C = Com(a*(1-2*sigma), rC) = rB*G + (a_uji*(1-2*sigma_uji))*H_uji
-        let C_vals_uji = self
-            .tensor(&sigma_uji, u)
-            .zip(self.tensor(&a_uji, u))
+        let C_vals_uji = izip!(self.tensor(&sigma_uji, u), self.tensor(&a_uji, u))
             .map(|(sigma, a)| a * (Scalar::one() - Scalar::from(2u32) * sigma));
         let rC = Scalar::random(&mut rng);
         let C = RistrettoPoint::multiscalar_mul(
@@ -398,9 +396,7 @@ impl ArcturusGens {
         let mut Y_j = y_j.into_iter().map(|y| y * self.U).collect::<Vec<_>>();
         for j in 0..self.m {
             X_j[j] += rho_uj.iter().map(|rho_j| rho_j[j]).sum::<Scalar>() * self.G;
-            Y_j[j] += rho_uj
-                .iter()
-                .zip(J_u.iter())
+            Y_j[j] += izip!(&rho_uj, &J_u)
                 .map(|(rho_j, J)| rho_j[j] * J)
                 .sum::<RistrettoPoint>();
             Z_j[j] += rhobar_uj.iter().map(|rhobar_j| rhobar_j[j]).sum::<Scalar>() * self.G;
@@ -421,41 +417,31 @@ impl ArcturusGens {
 
         let zA = rA + x * rB;
         let zC = rD + x * rC;
-        let f_uji = sigma_uji
-            .iter()
-            .zip(a_uji.iter())
+        let f_uji = izip!(&sigma_uji, &a_uji)
             .map(|(sigma_ji, a_ji)| {
-                sigma_ji
-                    .iter()
-                    .zip(a_ji.iter())
+                izip!(sigma_ji, a_ji)
                     .map(|(sigma_i, a_i)| {
-                        sigma_i[1..]
-                            .iter()
-                            .zip(a_i[1..].iter())
+                        izip!(&sigma_i[1..], &a_i[1..])
                             .map(|(sigma, a)| sigma * x + a)
                             .collect()
                     })
                     .collect()
             })
             .collect();
-        let zR_u = izip!(
-            idxs.iter(),
-            spends.iter().map(|output| output.privkey),
-            rho_uj.iter()
-        )
-        .map(|(&l, r, rho_j)| {
-            mu_k.clone().nth(l).unwrap() * r * x_exp_m
-                - exp_iter(x)
-                    .zip(rho_j.iter())
-                    .map(|(exp_x, rho)| rho * exp_x)
-                    .sum::<Scalar>()
-        })
-        .collect::<Vec<_>>();
+        let zR_u = izip!(idxs, spends.iter().map(|o| o.privkey), &rho_uj)
+            .map(|(&l, r, rho_j)| {
+                mu_k.clone().nth(l).unwrap() * r * x_exp_m
+                    - izip!(exp_iter(x), rho_j)
+                        .map(|(exp_x, rho)| rho * exp_x)
+                        .sum::<Scalar>()
+            })
+            .collect::<Vec<_>>();
         let zS = x_exp_m
             * (spends.iter().map(|s| s.blind).sum::<Scalar>()
                 - mints.iter().map(|m| m.blind).sum::<Scalar>())
-            - (0..self.m)
-                .zip(exp_iter(x))
+            - exp_iter(x)
+                .take(self.m)
+                .enumerate()
                 .map(|(j, x_exp_j)| {
                     x_exp_j * rhobar_uj.iter().map(|rhobar_j| rhobar_j[j]).sum::<Scalar>()
                 })
@@ -633,39 +619,30 @@ impl ArcturusGens {
 
         // Next, collect all scalar factors to be multiplied with the aforementioned points
         let scalars_G = once(
-            proofs
-                .iter()
-                .zip(wt_pn.iter())
+            izip!(proofs, &wt_pn)
                 .map(|(p, wt_n)| wt_n[0] * p.zA)
                 .sum::<Scalar>()
-                + proofs
-                    .iter()
-                    .zip(wt_pn.iter())
+                + izip!(proofs, &wt_pn)
                     .map(|(p, wt_n)| wt_n[1] * p.zC)
                     .sum::<Scalar>()
-                - proofs
-                    .iter()
-                    .zip(wt_pn.iter())
+                - izip!(proofs, &wt_pn)
                     .map(|(p, wt_n)| wt_n[2] * p.zR_u.iter().sum::<Scalar>())
                     .sum::<Scalar>()
-                - proofs
-                    .iter()
-                    .zip(wt_pn.iter())
+                - izip!(proofs, &wt_pn)
                     .map(|(p, wt_n)| wt_n[4] * p.zS)
                     .sum::<Scalar>(),
         );
         let scalars_U = once(
-            izip!(mu_pk.iter(), f_poly_pk.iter(), wt_pn.iter())
+            izip!(&mu_pk, &f_poly_pk, &wt_pn)
                 .map(|(mu_k, f_poly_k, wt_n)| {
-                    mu_k.iter()
-                        .zip(f_poly_k)
+                    izip!(mu_k, f_poly_k)
                         .map(|(mu, f_poly)| wt_n[3] * mu * f_poly)
                         .sum::<Scalar>()
                 })
                 .sum::<Scalar>(),
         );
         let scalars_H_uji = (0..self.n * self.m * u_max).map(|l| {
-            izip!(f_puji.clone(), x_p.iter(), wt_pn.iter())
+            izip!(&f_puji, &x_p, &wt_pn)
                 .map(|(f_uji, x, wt_n)| {
                     let f = f_uji
                         .into_iter()
@@ -679,43 +656,33 @@ impl ArcturusGens {
         });
 
         let scalars_A_p = wt_pn.iter().map(|wt_n| -wt_n[0]);
-        let scalars_B_p = wt_pn.iter().zip(x_p.iter()).map(|(wt_n, x)| -wt_n[0] * x);
-        let scalars_C_p = wt_pn.iter().zip(x_p.iter()).map(|(wt_n, x)| -wt_n[1] * x);
+        let scalars_B_p = izip!(&wt_pn, &x_p).map(|(wt_n, x)| -wt_n[0] * x);
+        let scalars_C_p = izip!(&wt_pn, &x_p).map(|(wt_n, x)| -wt_n[1] * x);
         let scalars_D_p = wt_pn.iter().map(|wt_n| -wt_n[1]);
-        let scalars_X_pj = x_p
-            .iter()
-            .zip(wt_pn.iter())
+        let scalars_X_pj = izip!(&x_p, &wt_pn)
             .map(|(&x, wt_n)| exp_iter(x).take(self.m).map(move |xj| -wt_n[2] * xj))
             .flatten();
-        let scalars_Y_pj = x_p
-            .iter()
-            .zip(wt_pn.iter())
+        let scalars_Y_pj = izip!(&x_p, &wt_pn)
             .map(|(&x, wt_n)| exp_iter(x).take(self.m).map(move |xj| -wt_n[3] * xj))
             .flatten();
-        let scalars_Z_pj = x_p
-            .iter()
-            .zip(wt_pn.iter())
+        let scalars_Z_pj = izip!(&x_p, &wt_pn)
             .map(|(&x, wt_n)| exp_iter(x).take(self.m).map(move |xj| -wt_n[4] * xj))
             .flatten();
-        let scalars_J_pu = proofs
-            .iter()
-            .zip(wt_pn.iter())
+        let scalars_J_pu = izip!(proofs, &wt_pn)
             .map(|(p, wt_n)| p.zR_u.iter().map(move |zR| -wt_n[3] * zR))
             .flatten();
-        let scalars_Q_pt = izip!(proofs.iter(), x_p.iter(), wt_pn.iter())
+        let scalars_Q_pt = izip!(proofs, &x_p, &wt_pn)
             .map(|(p, &x, wt_n)| {
                 repeat(-wt_n[4] * exp_iter(x).nth(self.m).unwrap()).take(p.mints.len())
             })
             .flatten();
         let scalars_M_k = (0..self.ring_size()).map(|k| {
-            izip!(mu_pk.iter(), f_poly_pk.iter(), wt_pn.iter())
+            izip!(&mu_pk, &f_poly_pk, &wt_pn)
                 .map(|(mu_k, f_poly_k, wt_n)| wt_n[2] * mu_k[k] * f_poly_k[k])
                 .sum()
         });
         let scalars_P_k = (0..self.ring_size()).map(|k| {
-            f_poly_pk
-                .iter()
-                .zip(wt_pn.iter())
+            izip!(&f_poly_pk, &wt_pn)
                 .map(|(f_poly_k, wt_n)| wt_n[4] * f_poly_k[k])
                 .sum()
         });
@@ -1040,7 +1007,7 @@ mod tests {
         }
 
         let mut proofs = Vec::new();
-        for ((idxs, spends), mints) in idxs_p.iter().zip(spends_p.iter()).zip(mints_p.iter()) {
+        for (idxs, spends, mints) in izip!(&idxs_p, &spends_p, &mints_p) {
             let proof = gens
                 .prove(
                     &mut Transcript::new(b"Arcturus-Test"),
@@ -1104,7 +1071,7 @@ mod tests {
         }
 
         let mut proofs = Vec::new();
-        for ((idxs, spends), mints) in idxs_p.iter().zip(spends_p.iter()).zip(mints_p.iter()) {
+        for (idxs, spends, mints) in izip!(&idxs_p, &spends_p, &mints_p) {
             let proof = gens
                 .prove(
                     &mut Transcript::new(b"Arcturus-Test"),
@@ -1165,7 +1132,7 @@ mod tests {
             mints_p.push(mints);
         }
 
-        for ((idxs, spends), mints) in idxs_p.iter().zip(spends_p.iter()).zip(mints_p.iter()) {
+        for (idxs, spends, mints) in izip!(&idxs_p, &spends_p, &mints_p) {
             let proof = gens
                 .prove(
                     &mut Transcript::new(b"Arcturus-Test"),
