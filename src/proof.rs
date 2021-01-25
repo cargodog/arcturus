@@ -350,50 +350,48 @@ impl ArcturusGens {
 
         // Build X_j, Y_j, & Z_j
         let mut ring_count = 0;
-        let (mut X_j, y_j, mut Z_j) = ring
-            .into_iter()
-            .map(|output| (output.pubkey, output.commit))
-            .zip(mu_k.clone())
-            .enumerate()
-            .map(|(k, ((M, P), mu))| {
-                ring_count += 1;
-                let p_j = idxs
-                    .iter()
-                    .enumerate()
-                    .map(|(u, &l)| compute_p_j(k, l, &a_uji[u]))
-                    .fold(vec![Scalar::zero(); self.m], |mut p_j, p_j_uth| {
+        let (mut X_j, y_j, mut Z_j) =
+            izip!(ring.iter().map(|O| (O.pubkey, O.commit)), mu_k.clone())
+                .enumerate()
+                .map(|(k, ((M, P), mu))| {
+                    ring_count += 1;
+                    let p_j = idxs
+                        .iter()
+                        .enumerate()
+                        .map(|(u, &l)| compute_p_j(k, l, &a_uji[u]))
+                        .fold(vec![Scalar::zero(); self.m], |mut p_j, p_j_uth| {
+                            for j in 0..self.m {
+                                p_j[j] += p_j_uth[j];
+                            }
+                            p_j
+                        });
+                    let X_j_kth = p_j.iter().map(|p| p * mu * M).collect::<Vec<_>>();
+                    let y_j_kth = p_j.iter().map(|p| p * mu).collect::<Vec<_>>();
+                    let Z_j_kth = p_j.iter().map(|p| p * P).collect::<Vec<_>>();
+                    (X_j_kth, y_j_kth, Z_j_kth)
+                })
+                .fold(
+                    (
+                        vec![RistrettoPoint::default(); self.m],
+                        vec![Scalar::zero(); self.m],
+                        vec![RistrettoPoint::default(); self.m],
+                    ),
+                    |(mut X_j, mut y_j, mut Z_j), (X_j_kth, y_j_kth, Z_j_kth)| {
                         for j in 0..self.m {
-                            p_j[j] += p_j_uth[j];
+                            X_j[j] += X_j_kth[j];
+                            y_j[j] += y_j_kth[j];
+                            Z_j[j] += Z_j_kth[j];
                         }
-                        p_j
-                    });
-                let X_j_kth = p_j.iter().map(|p| p * mu * M).collect::<Vec<_>>();
-                let y_j_kth = p_j.iter().map(|p| p * mu).collect::<Vec<_>>();
-                let Z_j_kth = p_j.iter().map(|p| p * P).collect::<Vec<_>>();
-                (X_j_kth, y_j_kth, Z_j_kth)
-            })
-            .fold(
-                (
-                    vec![RistrettoPoint::default(); self.m],
-                    vec![Scalar::zero(); self.m],
-                    vec![RistrettoPoint::default(); self.m],
-                ),
-                |(mut X_j, mut y_j, mut Z_j), (X_j_kth, y_j_kth, Z_j_kth)| {
-                    for j in 0..self.m {
-                        X_j[j] += X_j_kth[j];
-                        y_j[j] += y_j_kth[j];
-                        Z_j[j] += Z_j_kth[j];
-                    }
-                    (X_j, y_j, Z_j)
-                },
-            );
+                        (X_j, y_j, Z_j)
+                    },
+                );
         if ring_count < self.ring_size() {
             return Err(ArcturusError::RingSizeTooSmall);
         }
         if ring_count > self.ring_size() {
             return Err(ArcturusError::RingSizeTooLarge);
         }
-        let mut Y_j = y_j.into_iter().map(|y| y * self.U).collect::<Vec<_>>();
+        let mut Y_j = y_j.iter().map(|y| y * self.U).collect::<Vec<_>>();
         for j in 0..self.m {
             X_j[j] += rho_uj.iter().map(|rho_j| rho_j[j]).sum::<Scalar>() * self.G;
             Y_j[j] += izip!(&rho_uj, &J_u)
@@ -590,16 +588,15 @@ impl ArcturusGens {
         let points_B_p = proofs.iter().map(|p| &p.B);
         let points_C_p = proofs.iter().map(|p| &p.C);
         let points_D_p = proofs.iter().map(|p| &p.D);
-        let points_X_pj = proofs.iter().map(|p| p.X_j.iter()).flatten();
-        let points_Y_pj = proofs.iter().map(|p| p.Y_j.iter()).flatten();
-        let points_Z_pj = proofs.iter().map(|p| p.Z_j.iter()).flatten();
-        let points_J_pu = proofs.iter().map(|p| p.J_u.iter()).flatten();
+        let points_X_pj = proofs.iter().flat_map(|p| p.X_j.iter());
+        let points_Y_pj = proofs.iter().flat_map(|p| p.Y_j.iter());
+        let points_Z_pj = proofs.iter().flat_map(|p| p.Z_j.iter());
+        let points_J_pu = proofs.iter().flat_map(|p| p.J_u.iter());
         let points_Q_pt = proofs
             .iter()
-            .map(|p| p.mints.iter().map(|O| &O.commit))
-            .flatten();
-        let points_M_k = ring.into_iter().take(self.ring_size()).map(|O| &O.pubkey);
-        let points_P_k = ring.into_iter().take(self.ring_size()).map(|O| &O.commit);
+            .flat_map(|p| p.mints.iter().map(|O| &O.commit));
+        let points_M_k = ring.iter().take(self.ring_size()).map(|O| &O.pubkey);
+        let points_P_k = ring.iter().take(self.ring_size()).map(|O| &O.commit);
 
         // Chain all points into a single iterator
         let points = points_G
@@ -645,9 +642,9 @@ impl ArcturusGens {
             izip!(&f_puji, &x_p, &wt_pn)
                 .map(|(f_uji, x, wt_n)| {
                     let f = f_uji
-                        .into_iter()
-                        .flat_map(|f_ji| f_ji.into_iter())
-                        .flat_map(|f_i| f_i.into_iter())
+                        .iter()
+                        .flat_map(|f_ji| f_ji.iter())
+                        .flat_map(|f_i| f_i.iter())
                         .nth(l)
                         .unwrap();
                     wt_n[0] * f + wt_n[1] * f * (x - f) // Combination of terms from equations (1) & (2)
@@ -660,22 +657,16 @@ impl ArcturusGens {
         let scalars_C_p = izip!(&wt_pn, &x_p).map(|(wt_n, x)| -wt_n[1] * x);
         let scalars_D_p = wt_pn.iter().map(|wt_n| -wt_n[1]);
         let scalars_X_pj = izip!(&x_p, &wt_pn)
-            .map(|(&x, wt_n)| exp_iter(x).take(self.m).map(move |xj| -wt_n[2] * xj))
-            .flatten();
+            .flat_map(|(&x, wt_n)| exp_iter(x).take(self.m).map(move |xj| -wt_n[2] * xj));
         let scalars_Y_pj = izip!(&x_p, &wt_pn)
-            .map(|(&x, wt_n)| exp_iter(x).take(self.m).map(move |xj| -wt_n[3] * xj))
-            .flatten();
+            .flat_map(|(&x, wt_n)| exp_iter(x).take(self.m).map(move |xj| -wt_n[3] * xj));
         let scalars_Z_pj = izip!(&x_p, &wt_pn)
-            .map(|(&x, wt_n)| exp_iter(x).take(self.m).map(move |xj| -wt_n[4] * xj))
-            .flatten();
-        let scalars_J_pu = izip!(proofs, &wt_pn)
-            .map(|(p, wt_n)| p.zR_u.iter().map(move |zR| -wt_n[3] * zR))
-            .flatten();
-        let scalars_Q_pt = izip!(proofs, &x_p, &wt_pn)
-            .map(|(p, &x, wt_n)| {
-                repeat(-wt_n[4] * exp_iter(x).nth(self.m).unwrap()).take(p.mints.len())
-            })
-            .flatten();
+            .flat_map(|(&x, wt_n)| exp_iter(x).take(self.m).map(move |xj| -wt_n[4] * xj));
+        let scalars_J_pu =
+            izip!(proofs, &wt_pn).flat_map(|(p, wt_n)| p.zR_u.iter().map(move |zR| -wt_n[3] * zR));
+        let scalars_Q_pt = izip!(proofs, &x_p, &wt_pn).flat_map(|(p, &x, wt_n)| {
+            repeat(-wt_n[4] * exp_iter(x).nth(self.m).unwrap()).take(p.mints.len())
+        });
         let scalars_M_k = (0..self.ring_size()).map(|k| {
             izip!(&mu_pk, &f_poly_pk, &wt_pn)
                 .map(|(mu_k, f_poly_k, wt_n)| wt_n[2] * mu_k[k] * f_poly_k[k])
