@@ -1,7 +1,7 @@
 #![allow(non_snake_case)]
 use crate::errors::{ArcturusError, ArcturusResult};
 use crate::transcript::TranscriptProtocol;
-use crate::util::{exp_iter, IntoTellSize};
+use crate::util::{exp_iter, SizedFlatten};
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use blake2::Blake2b;
@@ -588,13 +588,12 @@ impl ArcturusGens {
         let points_B_p = proofs.iter().map(|p| &p.B);
         let points_C_p = proofs.iter().map(|p| &p.C);
         let points_D_p = proofs.iter().map(|p| &p.D);
-        let points_X_pj = proofs.iter().flat_map(|p| p.X_j.iter());
-        let points_Y_pj = proofs.iter().flat_map(|p| p.Y_j.iter());
-        let points_Z_pj = proofs.iter().flat_map(|p| p.Z_j.iter());
-        let points_J_pu = proofs.iter().flat_map(|p| p.J_u.iter());
-        let points_Q_pt = proofs
-            .iter()
-            .flat_map(|p| p.mints.iter().map(|O| &O.commit));
+        let points_X_pj = SizedFlatten::new(proofs.iter().map(|p| p.X_j.iter()));
+        let points_Y_pj = SizedFlatten::new(proofs.iter().map(|p| p.Y_j.iter()));
+        let points_Z_pj = SizedFlatten::new(proofs.iter().map(|p| p.Z_j.iter()));
+        let points_J_pu = SizedFlatten::new(proofs.iter().map(|p| p.J_u.iter()));
+        let points_Q_pt =
+            SizedFlatten::new(proofs.iter().map(|p| p.mints.iter().map(|O| &O.commit)));
         let points_M_k = ring.iter().take(self.ring_size()).map(|O| &O.pubkey);
         let points_P_k = ring.iter().take(self.ring_size()).map(|O| &O.commit);
 
@@ -656,17 +655,24 @@ impl ArcturusGens {
         let scalars_B_p = izip!(&wt_pn, &x_p).map(|(wt_n, x)| -wt_n[0] * x);
         let scalars_C_p = izip!(&wt_pn, &x_p).map(|(wt_n, x)| -wt_n[1] * x);
         let scalars_D_p = wt_pn.iter().map(|wt_n| -wt_n[1]);
-        let scalars_X_pj = izip!(&x_p, &wt_pn)
-            .flat_map(|(&x, wt_n)| exp_iter(x).take(self.m).map(move |xj| -wt_n[2] * xj));
-        let scalars_Y_pj = izip!(&x_p, &wt_pn)
-            .flat_map(|(&x, wt_n)| exp_iter(x).take(self.m).map(move |xj| -wt_n[3] * xj));
-        let scalars_Z_pj = izip!(&x_p, &wt_pn)
-            .flat_map(|(&x, wt_n)| exp_iter(x).take(self.m).map(move |xj| -wt_n[4] * xj));
-        let scalars_J_pu =
-            izip!(proofs, &wt_pn).flat_map(|(p, wt_n)| p.zR_u.iter().map(move |zR| -wt_n[3] * zR));
-        let scalars_Q_pt = izip!(proofs, &x_p, &wt_pn).flat_map(|(p, &x, wt_n)| {
+        let scalars_X_pj = SizedFlatten::new(
+            izip!(&x_p, &wt_pn)
+                .map(|(&x, wt_n)| exp_iter(x).take(self.m).map(move |xj| -wt_n[2] * xj)),
+        );
+        let scalars_Y_pj = SizedFlatten::new(
+            izip!(&x_p, &wt_pn)
+                .map(|(&x, wt_n)| exp_iter(x).take(self.m).map(move |xj| -wt_n[3] * xj)),
+        );
+        let scalars_Z_pj = SizedFlatten::new(
+            izip!(&x_p, &wt_pn)
+                .map(|(&x, wt_n)| exp_iter(x).take(self.m).map(move |xj| -wt_n[4] * xj)),
+        );
+        let scalars_J_pu = SizedFlatten::new(
+            izip!(proofs, &wt_pn).map(|(p, wt_n)| p.zR_u.iter().map(move |zR| -wt_n[3] * zR)),
+        );
+        let scalars_Q_pt = SizedFlatten::new(izip!(proofs, &x_p, &wt_pn).map(|(p, &x, wt_n)| {
             repeat(-wt_n[4] * exp_iter(x).nth(self.m).unwrap()).take(p.mints.len())
-        });
+        }));
         let scalars_M_k = (0..self.ring_size()).map(|k| {
             izip!(&mu_pk, &f_poly_pk, &wt_pn)
                 .map(|(mu_k, f_poly_k, wt_n)| wt_n[2] * mu_k[k] * f_poly_k[k])
@@ -695,15 +701,7 @@ impl ArcturusGens {
             .chain(scalars_P_k);
 
         // Evaluate everything as a single multiscalar multiplication
-        //
-        // Note: vartime_multiscalar_mul() requires an exact answer from the size_hint() of each iterator.
-        // Unfortunately, these iterators do not provide exact answers. To bypass the check, I use
-        // tell_size(0). This is a lie, but bypasses the broken size_hint() checks in
-        // multiscalar_mul(). This is ok, because I know the iterators I have constructed are
-        // identically sized. Hopefully a future version of multiscalar_mul() won't require this.
-        if RistrettoPoint::vartime_multiscalar_mul(scalars.tell_size(0), points.tell_size(0))
-            .is_identity()
-        {
+        if RistrettoPoint::vartime_multiscalar_mul(scalars, points).is_identity() {
             return Ok(());
         } else {
             return Err(ArcturusError::VerificationFailed);
