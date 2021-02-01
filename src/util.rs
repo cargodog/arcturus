@@ -86,3 +86,43 @@ where
         (lo, hi)
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    #[cfg(not(feature = "std"))]
+    use alloc::vec::Vec;
+    #[cfg(feature = "std")]
+    use std::vec::Vec;
+
+    #[test]
+    fn scalar_exp() {
+        let mut test_rng = rand::thread_rng();
+        let seed = Scalar::random(&mut test_rng);
+        let mut running_prod = Scalar::one();
+
+        // Test iterator values
+        for exp in exp_iter(seed).take(25) {
+            assert_eq!(running_prod, exp);
+            running_prod *= seed;
+        }
+
+        // Test size_hint()
+        assert_eq!((usize::max_value(), None), exp_iter(seed).size_hint());
+    }
+
+    #[test]
+    fn sized_flatten() {
+        let nested = (0..5)
+            .map(|i| (0..2).map(|j| 2 * i + j).collect())
+            .collect::<Vec<Vec<_>>>();
+
+        // Test iterator values
+        for (k, val) in SizedFlatten::new(nested.iter()).enumerate() {
+            assert_eq!(&k, val);
+        }
+
+        // Test size_hint()
+        assert_eq!((10, Some(10)), SizedFlatten::new(nested.iter()).size_hint());
+    }
+}
