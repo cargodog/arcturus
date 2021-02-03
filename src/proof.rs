@@ -60,8 +60,10 @@ impl SpendSecret {
         Output { pubkey, commit }
     }
 
-    pub fn get_tag(&self, gens: &ArcturusGens) -> RistrettoPoint {
-        self.privkey.invert() * gens.U
+    pub fn get_tag(&self) -> RistrettoPoint {
+        let G = constants::RISTRETTO_BASEPOINT_POINT;
+        let U = RistrettoPoint::hash_from_bytes::<Blake2b>(G.compress().as_bytes());
+        self.privkey.invert() * U
     }
 }
 
@@ -327,7 +329,7 @@ impl ArcturusGens {
             .collect::<Vec<Vec<_>>>();
 
         // Compute spend tags
-        let J_u = spends.iter().map(|s| s.get_tag(&self)).collect::<Vec<_>>();
+        let J_u = spends.iter().map(|s| s.get_tag()).collect::<Vec<_>>();
 
         // Compute minted outputs
         let mints_pub = mints.iter().map(|m| m.to_output()).collect::<Vec<_>>();
@@ -1134,7 +1136,7 @@ mod tests {
             assert_eq!(proof.count_spends(), spends.len());
             assert_eq!(proof.count_mints(), mints.len());
             for (i, tag) in proof.spend_tags().iter().enumerate() {
-                assert_eq!(tag, &spends[i].get_tag(&gens));
+                assert_eq!(tag, &spends[i].get_tag());
             }
             for (i, mint) in proof.mints().iter().enumerate() {
                 assert_eq!(mint, &mints[i].to_output());
