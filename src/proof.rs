@@ -230,6 +230,8 @@ impl ArcturusGens {
 
         if idxs.len() != spends.len() {
             return Err(ArcturusError::BadArg);
+        } else if idxs.len() > self.w {
+            return Err(ArcturusError::BadArg);
         }
 
         // First make sure the mints and spends balance to zero
@@ -901,11 +903,334 @@ fn compute_p_j(k: usize, l: usize, a_ji: &Vec<Vec<Scalar>>) -> Vec<Scalar> {
 
 #[cfg(test)]
 mod tests {
-    use crate::proof::*;
+    use super::*;
+    use curve25519_dalek::ristretto::CompressedRistretto;
     use rand::rngs::OsRng; // You should use a more secure RNG
 
+    const G: RistrettoPoint = constants::RISTRETTO_BASEPOINT_POINT;
+    const H: CompressedRistretto = CompressedRistretto([
+        88, 20, 136, 75, 248, 210, 190, 177, 173, 233, 152, 155, 220, 94, 58, 58, 119, 94, 58, 212,
+        93, 51, 131, 1, 105, 167, 53, 130, 234, 250, 194, 116,
+    ]);
+    const U: CompressedRistretto = CompressedRistretto([
+        198, 215, 127, 137, 59, 90, 1, 165, 233, 149, 190, 90, 86, 142, 85, 187, 34, 243, 147, 30,
+        230, 134, 242, 78, 93, 33, 27, 238, 150, 126, 198, 109,
+    ]);
+
     #[test]
-    fn new() {
+    fn output_new() {
+        let mut rng = rand::thread_rng();
+        let pubkey = RistrettoPoint::random(&mut rng);
+        let commit = RistrettoPoint::random(&mut rng);
+        let O = Output::new(pubkey, commit);
+        assert_eq!(pubkey, O.pubkey);
+        assert_eq!(commit, O.commit);
+    }
+
+    struct SpendSecretTest {
+        privkey_bytes: [u8; 32],
+        amount: u64,
+        blind_bytes: [u8; 32],
+        output_pubkey: CompressedRistretto,
+        output_commit: CompressedRistretto,
+        tag: CompressedRistretto,
+    }
+    const SPEND_SECRET_TESTS: [SpendSecretTest; 3] = [
+        SpendSecretTest {
+            privkey_bytes: [
+                199, 49, 149, 210, 237, 208, 113, 146, 229, 119, 140, 101, 71, 221, 7, 57, 192,
+                167, 27, 81, 96, 93, 227, 46, 52, 113, 106, 48, 108, 215, 89, 5,
+            ],
+            amount: 9351062461309522351,
+            blind_bytes: [
+                51, 102, 48, 203, 162, 146, 42, 217, 85, 174, 55, 26, 2, 241, 18, 49, 130, 224, 61,
+                241, 175, 14, 186, 90, 31, 48, 63, 54, 208, 9, 54, 7,
+            ],
+            output_pubkey: CompressedRistretto([
+                106, 68, 82, 198, 54, 61, 203, 175, 140, 87, 223, 195, 153, 105, 142, 131, 234,
+                235, 94, 92, 2, 111, 161, 121, 63, 24, 117, 56, 115, 220, 90, 42,
+            ]),
+            output_commit: CompressedRistretto([
+                248, 19, 97, 81, 254, 71, 179, 41, 172, 142, 79, 91, 19, 187, 213, 14, 155, 228,
+                197, 105, 14, 219, 17, 184, 37, 82, 244, 252, 235, 253, 168, 43,
+            ]),
+            tag: CompressedRistretto([
+                224, 120, 26, 30, 161, 71, 24, 221, 142, 36, 244, 207, 142, 99, 127, 139, 7, 25,
+                207, 182, 0, 48, 3, 25, 96, 226, 150, 174, 93, 117, 11, 60,
+            ]),
+        },
+        SpendSecretTest {
+            privkey_bytes: [
+                59, 221, 78, 25, 134, 165, 2, 25, 75, 12, 33, 169, 176, 110, 35, 149, 150, 96, 48,
+                248, 246, 228, 168, 81, 199, 157, 196, 81, 106, 0, 218, 4,
+            ],
+            amount: 17228059461709348854,
+            blind_bytes: [
+                243, 92, 3, 227, 23, 136, 147, 135, 11, 131, 250, 56, 157, 224, 181, 245, 245, 17,
+                33, 87, 94, 1, 37, 61, 46, 10, 91, 80, 80, 22, 237, 3,
+            ],
+            output_pubkey: CompressedRistretto([
+                134, 150, 244, 210, 225, 207, 126, 163, 172, 65, 0, 85, 155, 100, 90, 39, 119, 125,
+                223, 74, 68, 10, 73, 34, 123, 176, 179, 26, 92, 117, 175, 98,
+            ]),
+            output_commit: CompressedRistretto([
+                48, 195, 75, 120, 80, 23, 72, 56, 46, 147, 171, 99, 196, 236, 212, 252, 53, 38,
+                201, 194, 220, 8, 46, 73, 123, 144, 133, 245, 56, 70, 33, 16,
+            ]),
+            tag: CompressedRistretto([
+                132, 44, 143, 68, 212, 174, 73, 121, 148, 159, 165, 136, 61, 215, 38, 221, 198,
+                214, 233, 189, 149, 138, 225, 215, 236, 184, 102, 97, 84, 244, 249, 112,
+            ]),
+        },
+        SpendSecretTest {
+            privkey_bytes: [
+                193, 220, 228, 127, 249, 213, 40, 253, 151, 135, 102, 3, 35, 133, 15, 203, 212,
+                208, 65, 179, 204, 68, 211, 121, 251, 214, 110, 5, 29, 213, 171, 9,
+            ],
+            amount: 1865828838350312698,
+            blind_bytes: [
+                177, 115, 105, 217, 47, 207, 175, 228, 86, 29, 52, 219, 120, 93, 210, 10, 134, 180,
+                130, 246, 79, 63, 70, 243, 243, 112, 63, 232, 54, 55, 236, 12,
+            ],
+            output_pubkey: CompressedRistretto([
+                72, 209, 22, 128, 103, 48, 98, 140, 77, 64, 201, 152, 217, 104, 133, 36, 150, 93,
+                218, 69, 3, 92, 7, 25, 52, 142, 222, 241, 220, 218, 127, 2,
+            ]),
+            output_commit: CompressedRistretto([
+                76, 96, 211, 192, 179, 169, 6, 39, 142, 108, 149, 86, 56, 7, 93, 13, 228, 174, 156,
+                136, 156, 244, 184, 34, 84, 144, 165, 193, 217, 198, 70, 14,
+            ]),
+            tag: CompressedRistretto([
+                68, 234, 247, 30, 128, 78, 125, 77, 151, 14, 219, 30, 14, 24, 218, 216, 173, 194,
+                214, 12, 11, 95, 164, 234, 226, 188, 37, 67, 74, 192, 11, 64,
+            ]),
+        },
+    ];
+
+    #[test]
+    fn spend_secret_new() {
+        let mut rng = rand::thread_rng();
+        let privkey = Scalar::random(&mut rng);
+        let blind = Scalar::random(&mut rng);
+        let amount: u64 = rand::random();
+        let ss = SpendSecret::new(privkey, amount, blind);
+        assert_eq!(privkey, ss.privkey);
+        assert_eq!(Scalar::from(amount), ss.amount);
+        assert_eq!(blind, ss.blind);
+    }
+
+    #[test]
+    fn spend_secret_to_output() {
+        let mut rng = rand::thread_rng();
+
+        // Test against some random cases
+        for _ in 0..4 {
+            let privkey = Scalar::random(&mut rng);
+            let blind = Scalar::random(&mut rng);
+            let amount: u64 = rand::random();
+            let pubkey = privkey * G;
+            let commit = Scalar::from(amount) * H.decompress().unwrap() + blind * G;
+            let O = SpendSecret::new(privkey, amount, blind).to_output();
+            assert_eq!(pubkey, O.pubkey);
+            assert_eq!(commit, O.commit);
+        }
+
+        // Test against some hard-coded cases
+        for test in &SPEND_SECRET_TESTS {
+            let privkey = Scalar::from_bytes_mod_order(test.privkey_bytes);
+            let blind = Scalar::from_bytes_mod_order(test.blind_bytes);
+            let pubkey = privkey * G;
+            let commit = Scalar::from(test.amount) * H.decompress().unwrap() + blind * G;
+            let O = SpendSecret::new(privkey, test.amount, blind).to_output();
+            assert_eq!(test.output_pubkey, pubkey.compress());
+            assert_eq!(test.output_pubkey, O.pubkey.compress());
+            assert_eq!(test.output_commit, commit.compress());
+            assert_eq!(test.output_commit, O.commit.compress());
+        }
+    }
+
+    #[test]
+    fn spend_secret_get_tag() {
+        let mut rng = rand::thread_rng();
+
+        // Test against some random cases
+        for _ in 0..4 {
+            let privkey = Scalar::random(&mut rng);
+            let blind = Scalar::random(&mut rng);
+            let amount: u64 = rand::random();
+            let ss = SpendSecret::new(privkey, amount, blind);
+            let tag = ss.get_tag();
+            assert_eq!(tag, privkey.invert() * U.decompress().unwrap());
+        }
+
+        // Test against some hard-coded cases
+        for test in &SPEND_SECRET_TESTS {
+            let privkey = Scalar::from_bytes_mod_order(test.privkey_bytes);
+            let blind = Scalar::from_bytes_mod_order(test.blind_bytes);
+            let ss = SpendSecret::new(privkey, test.amount, blind);
+            let tag = ss.get_tag();
+            assert_eq!(test.tag, tag.compress());
+            assert_eq!(tag, privkey.invert() * U.decompress().unwrap());
+        }
+    }
+
+    struct MintSecretTest {
+        pubkey: CompressedRistretto,
+        amount: u64,
+        blind_bytes: [u8; 32],
+        output_pubkey: CompressedRistretto,
+        output_commit: CompressedRistretto,
+    }
+    const MINT_SECRET_TESTS: [MintSecretTest; 2] = [
+        MintSecretTest {
+            pubkey: CompressedRistretto([
+                26, 180, 76, 213, 19, 22, 162, 69, 60, 240, 54, 0, 85, 11, 248, 132, 173, 38, 10,
+                90, 122, 224, 11, 52, 140, 155, 139, 124, 0, 216, 125, 99,
+            ]),
+            amount: 3762547364937691008,
+            blind_bytes: [
+                231, 232, 180, 230, 197, 129, 36, 213, 178, 125, 90, 187, 183, 66, 63, 106, 123,
+                78, 145, 202, 181, 206, 194, 92, 170, 112, 210, 228, 26, 148, 47, 12,
+            ],
+            output_pubkey: CompressedRistretto([
+                26, 180, 76, 213, 19, 22, 162, 69, 60, 240, 54, 0, 85, 11, 248, 132, 173, 38, 10,
+                90, 122, 224, 11, 52, 140, 155, 139, 124, 0, 216, 125, 99,
+            ]),
+            output_commit: CompressedRistretto([
+                164, 139, 233, 64, 44, 43, 62, 12, 203, 157, 40, 25, 173, 70, 120, 126, 155, 200,
+                69, 77, 135, 224, 43, 6, 151, 28, 99, 5, 123, 241, 59, 8,
+            ]),
+        },
+        MintSecretTest {
+            pubkey: CompressedRistretto([
+                252, 184, 136, 4, 72, 247, 191, 166, 246, 20, 105, 149, 95, 28, 85, 107, 117, 36,
+                122, 229, 29, 134, 201, 65, 122, 137, 194, 168, 12, 73, 115, 73,
+            ]),
+            amount: 15455118957639524404,
+            blind_bytes: [
+                53, 195, 30, 103, 129, 253, 249, 179, 60, 94, 58, 247, 111, 19, 245, 72, 244, 40,
+                54, 63, 178, 215, 211, 2, 7, 192, 198, 27, 168, 119, 228, 9,
+            ],
+            output_pubkey: CompressedRistretto([
+                252, 184, 136, 4, 72, 247, 191, 166, 246, 20, 105, 149, 95, 28, 85, 107, 117, 36,
+                122, 229, 29, 134, 201, 65, 122, 137, 194, 168, 12, 73, 115, 73,
+            ]),
+            output_commit: CompressedRistretto([
+                224, 252, 68, 165, 233, 145, 236, 149, 109, 96, 35, 1, 56, 123, 100, 221, 131, 216,
+                118, 5, 0, 255, 90, 120, 100, 67, 35, 215, 34, 254, 236, 115,
+            ]),
+        },
+    ];
+
+    #[test]
+    fn mint_secret_new() {
+        let mut rng = rand::thread_rng();
+
+        // Test against some random cases
+        for _ in 0..4 {
+            let pubkey = RistrettoPoint::random(&mut rng);
+            let amount: u64 = rand::random();
+            let blind = Scalar::random(&mut rng);
+            let ms = MintSecret::new(pubkey, amount, blind);
+            assert_eq!(pubkey, ms.pubkey);
+            assert_eq!(Scalar::from(amount), ms.amount);
+            assert_eq!(blind, ms.blind);
+        }
+
+        // Test against some hard-coded cases
+        for test in &MINT_SECRET_TESTS {
+            let pubkey = test.pubkey.decompress().unwrap();
+            let blind = Scalar::from_bytes_mod_order(test.blind_bytes);
+            let ms = MintSecret::new(pubkey, test.amount, blind);
+            assert_eq!(test.pubkey, ms.pubkey.compress());
+            assert_eq!(Scalar::from(test.amount), ms.amount);
+            assert_eq!(blind, ms.blind);
+        }
+    }
+
+    #[test]
+    fn mint_secret_to_output() {
+        let mut rng = rand::thread_rng();
+
+        // Test against some random cases
+        for _ in 0..4 {
+            let pubkey = RistrettoPoint::random(&mut rng);
+            let amount: u64 = rand::random();
+            let blind = Scalar::random(&mut rng);
+            let commit = Scalar::from(amount) * H.decompress().unwrap() + blind * G;
+            let O = MintSecret::new(pubkey, amount, blind).to_output();
+            assert_eq!(pubkey, O.pubkey);
+            assert_eq!(commit, O.commit);
+        }
+
+        // Test against some hard-coded cases
+        for test in &MINT_SECRET_TESTS {
+            let pubkey = test.pubkey.decompress().unwrap();
+            let blind = Scalar::from_bytes_mod_order(test.blind_bytes);
+            let commit = Scalar::from(test.amount) * H.decompress().unwrap() + blind * G;
+            let O = MintSecret::new(pubkey, test.amount, blind).to_output();
+            assert_eq!(test.output_pubkey, pubkey.compress());
+            assert_eq!(test.output_pubkey, O.pubkey.compress());
+            assert_eq!(test.output_commit, commit.compress());
+            assert_eq!(test.output_commit, O.commit.compress());
+        }
+    }
+
+    #[test]
+    fn arcturus_proof() {
+        let gens = ArcturusGens::new(2, 5, 8).unwrap();
+
+        // Build a ring of random outputs
+        let mut ring = (0..gens.ring_size())
+            .map(|_| {
+                Output::new(
+                    RistrettoPoint::random(&mut OsRng),
+                    RistrettoPoint::random(&mut OsRng),
+                )
+            })
+            .collect::<Vec<_>>();
+        assert!(ring.len() > 2);
+
+        // Inject known outputs into the ring, which we can use to sign a proof
+        // Known outputs should just be injected at arbitrary indices.
+        let idxs = (2..7).collect::<Vec<usize>>();
+        let mut spends = Vec::new();
+        let mut mints = Vec::new();
+        for &idx in idxs.iter() {
+            let privkey = Scalar::random(&mut OsRng);
+            let pubkey = RistrettoPoint::random(&mut OsRng);
+            let amount = 6600;
+            let blind_spend = Scalar::random(&mut OsRng);
+            let blind_mint = Scalar::random(&mut OsRng);
+            let spend = SpendSecret::new(privkey, amount, blind_spend);
+            let mint = MintSecret::new(pubkey, amount, blind_mint);
+            ring[idx] = spend.to_output();
+            spends.push(spend);
+            mints.push(mint);
+        }
+
+        // Build the proof
+        let proof = gens
+            .prove(
+                &mut Transcript::new(b"Arcturus-Test"),
+                &ring[..],
+                &idxs[..],
+                &spends[..],
+                &mints[..],
+            )
+            .unwrap();
+        assert_eq!(proof.count_spends(), spends.len());
+        assert_eq!(proof.count_mints(), mints.len());
+        for (tag, spend) in izip!(proof.spend_tags(), &spends) {
+            assert_eq!(tag, spend.get_tag());
+        }
+        for (i, mint) in proof.mints().iter().enumerate() {
+            assert_eq!(mint, &mints[i].to_output());
+        }
+    }
+
+    #[test]
+    fn arcturus_gens_new() {
         let gens = ArcturusGens::new(3, 2, 1).unwrap();
         assert_eq!(gens.n, 3);
         assert_eq!(gens.m, 2);
@@ -937,7 +1262,7 @@ mod tests {
     }
 
     #[test]
-    fn ring_size() {
+    fn arcturus_gens_ring_size() {
         let gens = ArcturusGens::new(2, 2, 1).unwrap();
         assert_eq!(gens.ring_size(), 4);
         let gens = ArcturusGens::new(3, 2, 1).unwrap();
@@ -947,7 +1272,7 @@ mod tests {
     }
 
     #[test]
-    fn commit() {
+    fn arcturus_gens_commit() {
         let gens = ArcturusGens::new(2, 2, 1).unwrap();
         let A = gens.commit(&Scalar::from(100u32), &Scalar::from(10u32));
         let B = gens.commit(&Scalar::from(200u32), &Scalar::from(20u32));
@@ -997,6 +1322,7 @@ mod tests {
             mints_p.push(mints);
         }
 
+        // Test prooving and verifying individual proofs
         let mut proofs = Vec::new();
         for (idxs, spends, mints) in izip!(&idxs_p, &spends_p, &mints_p) {
             let proof = gens
@@ -1015,8 +1341,77 @@ mod tests {
                 .is_ok());
             proofs.push(proof);
         }
+
+        // Test batch verification
         let mut t = Transcript::new(b"Arcturus-Test");
         assert!(gens.verify_batch(&mut t, &ring[..], &proofs[..]).is_ok());
+
+        // Build a proof with too many witnesses, and confirm error
+        let mut idxs = Vec::new();
+        for i in 0..9 {
+            // One more than max witnesses
+            idxs.push(i);
+        }
+        let mut spends = Vec::new();
+        let mut mints = Vec::new();
+        for &idx in &idxs {
+            let privkey = Scalar::random(&mut OsRng);
+            let pubkey = RistrettoPoint::random(&mut OsRng);
+            let amount = 6600;
+            let blind_spend = Scalar::random(&mut OsRng);
+            let blind_mint = Scalar::random(&mut OsRng);
+            let spend = SpendSecret::new(privkey, amount, blind_spend);
+            let mint = MintSecret::new(pubkey, amount, blind_mint);
+            ring[idx] = spend.output();
+            spends.push(spend);
+            mints.push(mint);
+        }
+        // Should error: too many witnesses
+        assert!(gens
+            .prove(
+                &mut Transcript::new(b"Arcturus-Test"),
+                &ring[..],
+                &idxs[..],
+                &spends[..],
+                &mints[..],
+            )
+            .is_err());
+
+        idxs.pop();
+        // Should error: idx.len() != spends.len()
+        assert!(gens
+            .prove(
+                &mut Transcript::new(b"Arcturus-Test"),
+                &ring[..],
+                &idxs[..],
+                &spends[..],
+                &mints[..],
+            )
+            .is_err());
+
+        spends.pop();
+        // Should error: mints and spends don't balance
+        assert!(gens
+            .prove(
+                &mut Transcript::new(b"Arcturus-Test"),
+                &ring[..],
+                &idxs[..],
+                &spends[..],
+                &mints[..],
+            )
+            .is_err());
+
+        mints.pop();
+        // Should succeed
+        assert!(gens
+            .prove(
+                &mut Transcript::new(b"Arcturus-Test"),
+                &ring[..],
+                &idxs[..],
+                &spends[..],
+                &mints[..],
+            )
+            .is_ok());
     }
 
     #[test]
@@ -1061,6 +1456,7 @@ mod tests {
             mints_p.push(mints);
         }
 
+        // Test prooving and verifying individual proofs
         let mut proofs = Vec::new();
         for (idxs, spends, mints) in izip!(&idxs_p, &spends_p, &mints_p) {
             let proof = gens
@@ -1077,71 +1473,77 @@ mod tests {
             assert!(gens.verify_batch(&mut t, &ring, &[proof.clone()]).is_ok());
             proofs.push(proof);
         }
+
+        // Test batch verification
         let mut t = Transcript::new(b"Arcturus-Test");
         assert!(gens.verify_batch(&mut t, &ring, &proofs[..]).is_ok());
-    }
 
-    #[test]
-    fn proof_accessors() {
-        let gens = ArcturusGens::new(2, 5, 8).unwrap();
-
-        // Build a random ring of outputs
-        let mut ring = (0..gens.ring_size())
-            .map(|_| {
-                Output::new(
-                    RistrettoPoint::random(&mut OsRng),
-                    RistrettoPoint::random(&mut OsRng),
-                )
-            })
-            .collect::<Vec<_>>();
-
-        // Lets build our outputs
-        let mut idxs_p = Vec::new();
-        let mut spends_p = Vec::new();
-        let mut mints_p = Vec::new();
-        for p in 0..4 {
-            let mut idxs = Vec::new();
-            for i in 0..3 {
-                idxs.push(p * 3 + i);
-            }
-            let mut spends = Vec::new();
-            let mut mints = Vec::new();
-            for &idx in &idxs {
-                let privkey = Scalar::random(&mut OsRng);
-                let pubkey = RistrettoPoint::random(&mut OsRng);
-                let amount = 6600;
-                let blind_spend = Scalar::random(&mut OsRng);
-                let blind_mint = Scalar::random(&mut OsRng);
-                let spend = SpendSecret::new(privkey, amount, blind_spend);
-                let mint = MintSecret::new(pubkey, amount, blind_mint);
-                ring[idx] = spend.to_output();
-                spends.push(spend);
-                mints.push(mint);
-            }
-            idxs_p.push(idxs);
-            spends_p.push(spends);
-            mints_p.push(mints);
+        // Build a proof with too many witnesses, and confirm error
+        let mut idxs = Vec::new();
+        for i in 0..9 {
+            // One more than max witnesses
+            idxs.push(i);
         }
-
-        for (idxs, spends, mints) in izip!(&idxs_p, &spends_p, &mints_p) {
-            let proof = gens
-                .prove(
-                    &mut Transcript::new(b"Arcturus-Test"),
-                    &ring[..],
-                    &idxs[..],
-                    &spends[..],
-                    &mints[..],
-                )
-                .unwrap();
-            assert_eq!(proof.count_spends(), spends.len());
-            assert_eq!(proof.count_mints(), mints.len());
-            for (i, tag) in proof.spend_tags().iter().enumerate() {
-                assert_eq!(tag, &spends[i].get_tag());
-            }
-            for (i, mint) in proof.mints().iter().enumerate() {
-                assert_eq!(mint, &mints[i].to_output());
-            }
+        let mut spends = Vec::new();
+        let mut mints = Vec::new();
+        for &idx in &idxs {
+            let privkey = Scalar::random(&mut OsRng);
+            let pubkey = RistrettoPoint::random(&mut OsRng);
+            let amount = 6600;
+            let blind_spend = Scalar::random(&mut OsRng);
+            let blind_mint = Scalar::random(&mut OsRng);
+            let spend = SpendSecret::new(privkey, amount, blind_spend);
+            let mint = MintSecret::new(pubkey, amount, blind_mint);
+            ring[idx] = spend.output();
+            spends.push(spend);
+            mints.push(mint);
         }
+        // Should error: too many witnesses
+        assert!(gens
+            .prove(
+                &mut Transcript::new(b"Arcturus-Test"),
+                &ring[..],
+                &idxs[..],
+                &spends[..],
+                &mints[..],
+            )
+            .is_err());
+
+        idxs.pop();
+        // Should error: idx.len() != spends.len()
+        assert!(gens
+            .prove(
+                &mut Transcript::new(b"Arcturus-Test"),
+                &ring[..],
+                &idxs[..],
+                &spends[..],
+                &mints[..],
+            )
+            .is_err());
+
+        spends.pop();
+        // Should error: mints and spends don't balance
+        assert!(gens
+            .prove(
+                &mut Transcript::new(b"Arcturus-Test"),
+                &ring[..],
+                &idxs[..],
+                &spends[..],
+                &mints[..],
+            )
+            .is_err());
+
+        mints.pop();
+        // Should succeed
+        assert!(gens
+            .prove(
+                &mut Transcript::new(b"Arcturus-Test"),
+                &ring[..],
+                &idxs[..],
+                &spends[..],
+                &mints[..],
+            )
+            .is_ok());
     }
 
     #[test]
@@ -1200,5 +1602,180 @@ mod tests {
                 &mints[..],
             )
             .is_err());
+    }
+
+    struct DeriveGeneratorTest {
+        u: u32,
+        j: u32,
+        i: u32,
+        generator: CompressedRistretto,
+    }
+    const DERIVE_GENERATOR_TESTS: [DeriveGeneratorTest; 6] = [
+        DeriveGeneratorTest {
+            u: 0,
+            j: 0,
+            i: 0,
+            generator: CompressedRistretto([
+                88, 20, 136, 75, 248, 210, 190, 177, 173, 233, 152, 155, 220, 94, 58, 58, 119, 94,
+                58, 212, 93, 51, 131, 1, 105, 167, 53, 130, 234, 250, 194, 116,
+            ]),
+        },
+        DeriveGeneratorTest {
+            u: 1,
+            j: 0,
+            i: 0,
+            generator: CompressedRistretto([
+                194, 178, 89, 2, 84, 132, 230, 112, 111, 226, 126, 224, 100, 225, 99, 113, 234,
+                154, 248, 153, 151, 20, 241, 215, 167, 41, 143, 186, 226, 102, 24, 102,
+            ]),
+        },
+        DeriveGeneratorTest {
+            u: 4,
+            j: 2,
+            i: 0,
+            generator: CompressedRistretto([
+                190, 51, 77, 158, 51, 108, 81, 214, 169, 221, 29, 236, 210, 81, 120, 253, 195, 129,
+                138, 218, 234, 193, 31, 250, 63, 255, 164, 71, 60, 86, 17, 39,
+            ]),
+        },
+        DeriveGeneratorTest {
+            u: 0,
+            j: 7,
+            i: 0,
+            generator: CompressedRistretto([
+                44, 116, 102, 244, 143, 42, 93, 185, 204, 252, 252, 110, 196, 102, 171, 18, 65, 49,
+                74, 10, 47, 179, 33, 117, 24, 201, 186, 113, 3, 199, 231, 113,
+            ]),
+        },
+        DeriveGeneratorTest {
+            u: 0,
+            j: 99,
+            i: 1,
+            generator: CompressedRistretto([
+                182, 55, 187, 58, 199, 199, 90, 204, 88, 82, 218, 223, 188, 38, 201, 224, 102, 78,
+                0, 120, 209, 78, 145, 12, 131, 99, 122, 39, 48, 105, 115, 10,
+            ]),
+        },
+        DeriveGeneratorTest {
+            u: 0,
+            j: 0,
+            i: 8,
+            generator: CompressedRistretto([
+                30, 100, 155, 211, 42, 105, 108, 57, 11, 133, 58, 177, 173, 137, 199, 29, 138, 170,
+                187, 139, 115, 155, 94, 70, 186, 98, 54, 104, 72, 213, 139, 108,
+            ]),
+        },
+    ];
+    #[test]
+    fn test_derive_generator() {
+        for test in &DERIVE_GENERATOR_TESTS {
+            assert_eq!(
+                &test.generator,
+                &derive_generator(&G, test.u, test.j, test.i).compress()
+            );
+        }
+    }
+
+    struct ConvertBaseTest {
+        num: usize,
+        base: usize,
+        decomposed: [usize; 12],
+    }
+    const CONVERT_BASE_TESTS: [ConvertBaseTest; 8] = [
+        ConvertBaseTest {
+            num: 131,
+            base: 2,
+            decomposed: [1, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0],
+        },
+        ConvertBaseTest {
+            num: 131,
+            base: 8,
+            decomposed: [3, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        },
+        ConvertBaseTest {
+            num: 131,
+            base: 10,
+            decomposed: [1, 3, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        },
+        ConvertBaseTest {
+            num: 131,
+            base: 16,
+            decomposed: [3, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        },
+        ConvertBaseTest {
+            num: 3819,
+            base: 2,
+            decomposed: [1, 1, 0, 1, 0, 1, 1, 1, 0, 1, 1, 1],
+        },
+        ConvertBaseTest {
+            num: 3819,
+            base: 8,
+            decomposed: [3, 5, 3, 7, 0, 0, 0, 0, 0, 0, 0, 0],
+        },
+        ConvertBaseTest {
+            num: 3819,
+            base: 10,
+            decomposed: [9, 1, 8, 3, 0, 0, 0, 0, 0, 0, 0, 0],
+        },
+        ConvertBaseTest {
+            num: 3819,
+            base: 16,
+            decomposed: [11, 14, 14, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        },
+    ];
+
+    #[test]
+    fn test_convert_base() {
+        for test in &CONVERT_BASE_TESTS {
+            assert_eq!(
+                &test.decomposed,
+                &convert_base(test.num, test.base, test.decomposed.len())[..]
+            );
+        }
+    }
+
+    struct ComputePJTest {
+        k: usize,
+        l: usize,
+        out_bytes: [[u8; 32]; 4],
+    }
+    const COMPUTE_P_J_TESTS: [ComputePJTest; 1] = [ComputePJTest {
+        k: 2,
+        l: 3,
+        out_bytes: [
+            [
+                72, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0, 0,
+            ],
+            [
+                78, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0, 0,
+            ],
+            [
+                27, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0, 0,
+            ],
+            [
+                3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0,
+            ],
+        ],
+    }];
+
+    //fn compute_p_j(k: usize, l: usize, a_ji: &Vec<Vec<Scalar>>) -> Vec<Scalar> {
+    #[test]
+    fn test_compute_p_j() {
+        // Just some static a_ji
+        let a_ji = (1..5)
+            .map(|m| (1..5).map(|n| Scalar::from((m * n) as u32)).collect())
+            .collect::<Vec<Vec<Scalar>>>();
+
+        // Compare hard-coded test cases evaluated using a_ji
+        for test in &COMPUTE_P_J_TESTS {
+            let scalars = compute_p_j(test.k, test.l, &a_ji);
+            for (bytes, scalar) in izip!(&test.out_bytes[..], scalars) {
+                assert_eq!(bytes, &scalar.to_bytes());
+            }
+        }
     }
 }
