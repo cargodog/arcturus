@@ -52,7 +52,7 @@ impl SpendSecret {
         }
     }
 
-    pub fn to_output(&self) -> Output {
+    pub fn output(&self) -> Output {
         let G = constants::RISTRETTO_BASEPOINT_POINT;
         let H = derive_generator(&G, 0, 0, 0);
         let pubkey = self.privkey * G;
@@ -60,7 +60,7 @@ impl SpendSecret {
         Output { pubkey, commit }
     }
 
-    pub fn get_tag(&self) -> RistrettoPoint {
+    pub fn tag(&self) -> RistrettoPoint {
         let G = constants::RISTRETTO_BASEPOINT_POINT;
         let U = RistrettoPoint::hash_from_bytes::<Blake2b>(G.compress().as_bytes());
         self.privkey.invert() * U
@@ -86,7 +86,7 @@ impl MintSecret {
         }
     }
 
-    pub fn to_output(&self) -> Output {
+    pub fn output(&self) -> Output {
         let G = constants::RISTRETTO_BASEPOINT_POINT;
         let H = derive_generator(&G, 0, 0, 0);
         let pubkey = self.pubkey;
@@ -124,12 +124,12 @@ impl ArcturusProof {
         self.mints.len()
     }
 
-    pub fn spend_tags(&self) -> Vec<RistrettoPoint> {
-        self.J_u.clone()
+    pub fn tags(&self) -> &Vec<RistrettoPoint> {
+        &self.J_u
     }
 
-    pub fn mints(&self) -> Vec<Output> {
-        self.mints.clone()
+    pub fn mints(&self) -> &Vec<Output> {
+        &self.mints
     }
 }
 
@@ -331,10 +331,10 @@ impl ArcturusGens {
             .collect::<Vec<Vec<_>>>();
 
         // Compute spend tags
-        let J_u = spends.iter().map(|s| s.get_tag()).collect::<Vec<_>>();
+        let J_u = spends.iter().map(|s| s.tag()).collect::<Vec<_>>();
 
         // Compute minted outputs
-        let mints_pub = mints.iter().map(|m| m.to_output()).collect::<Vec<_>>();
+        let mints_pub = mints.iter().map(|m| m.output()).collect::<Vec<_>>();
 
         // Commit to public parameters so far
         for O in &mints_pub {
@@ -1020,7 +1020,7 @@ mod tests {
     }
 
     #[test]
-    fn spend_secret_to_output() {
+    fn spend_secret_output() {
         let mut rng = rand::thread_rng();
 
         // Test against some random cases
@@ -1030,7 +1030,7 @@ mod tests {
             let amount: u64 = rand::random();
             let pubkey = privkey * G;
             let commit = Scalar::from(amount) * H.decompress().unwrap() + blind * G;
-            let O = SpendSecret::new(privkey, amount, blind).to_output();
+            let O = SpendSecret::new(privkey, amount, blind).output();
             assert_eq!(pubkey, O.pubkey);
             assert_eq!(commit, O.commit);
         }
@@ -1041,7 +1041,7 @@ mod tests {
             let blind = Scalar::from_bytes_mod_order(test.blind_bytes);
             let pubkey = privkey * G;
             let commit = Scalar::from(test.amount) * H.decompress().unwrap() + blind * G;
-            let O = SpendSecret::new(privkey, test.amount, blind).to_output();
+            let O = SpendSecret::new(privkey, test.amount, blind).output();
             assert_eq!(test.output_pubkey, pubkey.compress());
             assert_eq!(test.output_pubkey, O.pubkey.compress());
             assert_eq!(test.output_commit, commit.compress());
@@ -1050,7 +1050,7 @@ mod tests {
     }
 
     #[test]
-    fn spend_secret_get_tag() {
+    fn spend_secret_tag() {
         let mut rng = rand::thread_rng();
 
         // Test against some random cases
@@ -1059,7 +1059,7 @@ mod tests {
             let blind = Scalar::random(&mut rng);
             let amount: u64 = rand::random();
             let ss = SpendSecret::new(privkey, amount, blind);
-            let tag = ss.get_tag();
+            let tag = ss.tag();
             assert_eq!(tag, privkey.invert() * U.decompress().unwrap());
         }
 
@@ -1068,7 +1068,7 @@ mod tests {
             let privkey = Scalar::from_bytes_mod_order(test.privkey_bytes);
             let blind = Scalar::from_bytes_mod_order(test.blind_bytes);
             let ss = SpendSecret::new(privkey, test.amount, blind);
-            let tag = ss.get_tag();
+            let tag = ss.tag();
             assert_eq!(test.tag, tag.compress());
             assert_eq!(tag, privkey.invert() * U.decompress().unwrap());
         }
@@ -1149,7 +1149,7 @@ mod tests {
     }
 
     #[test]
-    fn mint_secret_to_output() {
+    fn mint_secret_output() {
         let mut rng = rand::thread_rng();
 
         // Test against some random cases
@@ -1158,7 +1158,7 @@ mod tests {
             let amount: u64 = rand::random();
             let blind = Scalar::random(&mut rng);
             let commit = Scalar::from(amount) * H.decompress().unwrap() + blind * G;
-            let O = MintSecret::new(pubkey, amount, blind).to_output();
+            let O = MintSecret::new(pubkey, amount, blind).output();
             assert_eq!(pubkey, O.pubkey);
             assert_eq!(commit, O.commit);
         }
@@ -1168,7 +1168,7 @@ mod tests {
             let pubkey = test.pubkey.decompress().unwrap();
             let blind = Scalar::from_bytes_mod_order(test.blind_bytes);
             let commit = Scalar::from(test.amount) * H.decompress().unwrap() + blind * G;
-            let O = MintSecret::new(pubkey, test.amount, blind).to_output();
+            let O = MintSecret::new(pubkey, test.amount, blind).output();
             assert_eq!(test.output_pubkey, pubkey.compress());
             assert_eq!(test.output_pubkey, O.pubkey.compress());
             assert_eq!(test.output_commit, commit.compress());
@@ -1204,7 +1204,7 @@ mod tests {
             let blind_mint = Scalar::random(&mut OsRng);
             let spend = SpendSecret::new(privkey, amount, blind_spend);
             let mint = MintSecret::new(pubkey, amount, blind_mint);
-            ring[idx] = spend.to_output();
+            ring[idx] = spend.output();
             spends.push(spend);
             mints.push(mint);
         }
@@ -1221,11 +1221,11 @@ mod tests {
             .unwrap();
         assert_eq!(proof.count_spends(), spends.len());
         assert_eq!(proof.count_mints(), mints.len());
-        for (tag, spend) in izip!(proof.spend_tags(), &spends) {
-            assert_eq!(tag, spend.get_tag());
+        for (tag, spend) in izip!(proof.tags().clone(), &spends) {
+            assert_eq!(tag, spend.tag());
         }
         for (i, mint) in proof.mints().iter().enumerate() {
-            assert_eq!(mint, &mints[i].to_output());
+            assert_eq!(mint, &mints[i].output());
         }
     }
 
@@ -1313,7 +1313,7 @@ mod tests {
                 let blind_mint = Scalar::random(&mut OsRng);
                 let spend = SpendSecret::new(privkey, amount, blind_spend);
                 let mint = MintSecret::new(pubkey, amount, blind_mint);
-                ring[idx] = spend.to_output();
+                ring[idx] = spend.output();
                 spends.push(spend);
                 mints.push(mint);
             }
@@ -1447,7 +1447,7 @@ mod tests {
                 let blind_mint = Scalar::random(&mut OsRng);
                 let spend = SpendSecret::new(privkey, amount, blind_spend);
                 let mint = MintSecret::new(pubkey, amount, blind_mint);
-                ring[idx] = spend.to_output();
+                ring[idx] = spend.output();
                 spends.push(spend);
                 mints.push(mint);
             }
@@ -1575,7 +1575,7 @@ mod tests {
             let blind_mint = Scalar::random(&mut OsRng);
             let spend = SpendSecret::new(privkey, amount, blind_spend);
             let mint = MintSecret::new(pubkey, amount, blind_mint);
-            ring[idx] = spend.to_output();
+            ring[idx] = spend.output();
             spends.push(spend);
             mints.push(mint);
         }
