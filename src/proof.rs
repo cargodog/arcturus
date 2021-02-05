@@ -1277,6 +1277,18 @@ mod tests {
         let A = gens.commit(&Scalar::from(100u32), &Scalar::from(10u32));
         let B = gens.commit(&Scalar::from(200u32), &Scalar::from(20u32));
         let C = gens.commit(&Scalar::from(300u32), &Scalar::from(30u32));
+        assert_eq!(
+            A,
+            Scalar::from(100u32) * H.decompress().unwrap() + Scalar::from(10u32) * G
+        );
+        assert_eq!(
+            B,
+            Scalar::from(200u32) * H.decompress().unwrap() + Scalar::from(20u32) * G
+        );
+        assert_eq!(
+            C,
+            Scalar::from(300u32) * H.decompress().unwrap() + Scalar::from(30u32) * G
+        );
         assert_eq!(A + B, C);
     }
 
