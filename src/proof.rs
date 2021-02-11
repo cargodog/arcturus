@@ -1678,6 +1678,7 @@ mod tests {
             ]),
         },
     ];
+
     #[test]
     fn test_derive_generator() {
         for test in &DERIVE_GENERATOR_TESTS {
@@ -1746,6 +1747,34 @@ mod tests {
         }
     }
 
+    #[test]
+    fn test_cycle_tensor_poly_evals() {
+        // Generate a random f_uji tensor
+        let mut rng = rand::thread_rng();
+        let f_uji = (0..5).map(|_| (0..4).map(|_| (0..3).map(|_| Scalar::random(&mut rng)).collect::<Vec<_>>()).collect::<Vec<_>>()).collect::<Vec<_>>();
+
+        let mut digits: Vec<usize> = vec![0; f_uji[0].len()];
+        for eval in cycle_tensor_poly_evals(&f_uji).take(81) {
+            let mut sum = Scalar::zero();
+            for u in 0..f_uji.len() {
+                let mut prod = Scalar::one();
+                for (j, &i) in digits.iter().enumerate() {
+                    prod *= f_uji[u][j][i];
+                }
+                sum += prod;
+            }
+            for j in 0..digits.len() {
+                digits[j] += 1;
+                if digits[j] >= f_uji[0][0].len() {
+                    digits[j] = 0;
+                } else {
+                    break;
+                }
+            }
+            assert_eq!(sum, eval);
+        }
+    }
+
     struct ComputePJTest {
         k: usize,
         l: usize,
@@ -1774,7 +1803,6 @@ mod tests {
         ],
     }];
 
-    //fn compute_p_j(k: usize, l: usize, a_ji: &Vec<Vec<Scalar>>) -> Vec<Scalar> {
     #[test]
     fn test_compute_p_j() {
         // Just some static a_ji
