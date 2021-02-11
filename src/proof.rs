@@ -1,7 +1,8 @@
 #![allow(non_snake_case)]
 use crate::errors::{ArcturusError, ArcturusResult};
 use crate::transcript::TranscriptProtocol;
-use crate::util::{exp_iter, SizedFlatten};
+use crate::util::{exp_iter, sized_flatten};
+use crate::{flatten_2d, flatten_3d};
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use blake2::Blake2b;
@@ -207,11 +208,6 @@ impl ArcturusGens {
         v * self.H_uji[0][0][0] + r * self.G
     }
 
-    /// Create a flattened iterator over a 3D tensor
-    fn tensor<'a, T>(&self, t: &'a Vec<Vec<Vec<T>>>, u: usize) -> TensorIterator<'a, T> {
-        TensorIterator::new(t, u, self.m, self.n)
-    }
-
     /// Prove that newly minted outputs correctly spend existing outputs within the ring.
     ///
     /// > Note: this does not prove that an output has not been previously spent in a ledger. Each
@@ -280,8 +276,8 @@ impl ArcturusGens {
         // A = Com(a, rA) = rA*G + a_uji*H_uji
         let rA = Scalar::random(&mut rng);
         let A = RistrettoPoint::multiscalar_mul(
-            once(&rA).chain(self.tensor(&a_uji, u)),
-            once(&self.G).chain(self.tensor(&self.H_uji, u)),
+            once(&rA).chain(flatten_3d!(&a_uji[0..u])),
+            once(&self.G).chain(flatten_3d!(&self.H_uji[0..u])),
         );
 
         // Convert each index from binary to a `m` digit `n-ary` number
@@ -302,24 +298,24 @@ impl ArcturusGens {
         // B = Com(sigma, rB) = rB*G + sigma_uji*H_uji
         let rB = Scalar::random(&mut rng);
         let B = RistrettoPoint::multiscalar_mul(
-            once(&rB).chain(self.tensor(&sigma_uji, u)),
-            once(&self.G).chain(self.tensor(&self.H_uji, u)),
+            once(&rB).chain(flatten_3d!(&sigma_uji[0..u])),
+            once(&self.G).chain(flatten_3d!(&self.H_uji[0..u])),
         );
 
         // C = Com(a*(1-2*sigma), rC) = rB*G + (a_uji*(1-2*sigma_uji))*H_uji
-        let C_vals_uji = izip!(self.tensor(&sigma_uji, u), self.tensor(&a_uji, u))
+        let C_vals_uji = izip!(flatten_3d!(&sigma_uji[0..u]), flatten_3d!(&a_uji[0..u]))
             .map(|(sigma, a)| a * (Scalar::one() - Scalar::from(2u32) * sigma));
         let rC = Scalar::random(&mut rng);
         let C = RistrettoPoint::multiscalar_mul(
             once(rC).chain(C_vals_uji),
-            once(&self.G).chain(self.tensor(&self.H_uji, u)),
+            once(&self.G).chain(flatten_3d!(&self.H_uji[0..u])),
         );
 
         // D = Com(-a^2, rD) = rD*G + -a_uji*a_uji*H_uji
         let rD = Scalar::random(&mut rng);
         let D = RistrettoPoint::multiscalar_mul(
-            once(rD).chain(self.tensor(&a_uji, u).map(|a| -a * a)),
-            once(&self.G).chain(self.tensor(&self.H_uji, u)),
+            once(rD).chain(flatten_3d!(&a_uji[0..u]).map(|a| -a * a)),
+            once(&self.G).chain(flatten_3d!(&self.H_uji[0..u])),
         );
 
         // Generate randomness rho & rhobar
@@ -587,17 +583,16 @@ impl ArcturusGens {
         // First, collect all points used in each proof
         let points_G = once(&self.G);
         let points_U = once(&self.U);
-        let points_H_uji = self.tensor(&self.H_uji, u_max);
+        let points_H_uji = flatten_3d!(&self.H_uji[0..u_max]);
         let points_A_p = proofs.iter().map(|p| &p.A);
         let points_B_p = proofs.iter().map(|p| &p.B);
         let points_C_p = proofs.iter().map(|p| &p.C);
         let points_D_p = proofs.iter().map(|p| &p.D);
-        let points_X_pj = SizedFlatten::new(proofs.iter().map(|p| p.X_j.iter()));
-        let points_Y_pj = SizedFlatten::new(proofs.iter().map(|p| p.Y_j.iter()));
-        let points_Z_pj = SizedFlatten::new(proofs.iter().map(|p| p.Z_j.iter()));
-        let points_J_pu = SizedFlatten::new(proofs.iter().map(|p| p.J_u.iter()));
-        let points_Q_pt =
-            SizedFlatten::new(proofs.iter().map(|p| p.mints.iter().map(|O| &O.commit)));
+        let points_X_pj = sized_flatten(proofs.iter().map(|p| p.X_j.iter()));
+        let points_Y_pj = sized_flatten(proofs.iter().map(|p| p.Y_j.iter()));
+        let points_Z_pj = sized_flatten(proofs.iter().map(|p| p.Z_j.iter()));
+        let points_J_pu = sized_flatten(proofs.iter().map(|p| p.J_u.iter()));
+        let points_Q_pt = sized_flatten(proofs.iter().map(|p| p.mints.iter().map(|O| &O.commit)));
         let points_M_k = ring.iter().take(self.ring_size()).map(|O| &O.pubkey);
         let points_P_k = ring.iter().take(self.ring_size()).map(|O| &O.commit);
 
@@ -659,22 +654,22 @@ impl ArcturusGens {
         let scalars_B_p = izip!(&wt_pn, &x_p).map(|(wt_n, x)| -wt_n[0] * x);
         let scalars_C_p = izip!(&wt_pn, &x_p).map(|(wt_n, x)| -wt_n[1] * x);
         let scalars_D_p = wt_pn.iter().map(|wt_n| -wt_n[1]);
-        let scalars_X_pj = SizedFlatten::new(
+        let scalars_X_pj = sized_flatten(
             izip!(&x_p, &wt_pn)
                 .map(|(&x, wt_n)| exp_iter(x).take(self.m).map(move |xj| -wt_n[2] * xj)),
         );
-        let scalars_Y_pj = SizedFlatten::new(
+        let scalars_Y_pj = sized_flatten(
             izip!(&x_p, &wt_pn)
                 .map(|(&x, wt_n)| exp_iter(x).take(self.m).map(move |xj| -wt_n[3] * xj)),
         );
-        let scalars_Z_pj = SizedFlatten::new(
+        let scalars_Z_pj = sized_flatten(
             izip!(&x_p, &wt_pn)
                 .map(|(&x, wt_n)| exp_iter(x).take(self.m).map(move |xj| -wt_n[4] * xj)),
         );
-        let scalars_J_pu = SizedFlatten::new(
+        let scalars_J_pu = sized_flatten(
             izip!(proofs, &wt_pn).map(|(p, wt_n)| p.zR_u.iter().map(move |zR| -wt_n[3] * zR)),
         );
-        let scalars_Q_pt = SizedFlatten::new(izip!(proofs, &x_p, &wt_pn).map(|(p, &x, wt_n)| {
+        let scalars_Q_pt = sized_flatten(izip!(proofs, &x_p, &wt_pn).map(|(p, &x, wt_n)| {
             repeat(-wt_n[4] * exp_iter(x).nth(self.m).unwrap()).take(p.mints.len())
         }));
         let scalars_M_k = (0..self.ring_size()).map(|k| {
@@ -710,63 +705,6 @@ impl ArcturusGens {
         } else {
             return Err(ArcturusError::VerificationFailed);
         }
-    }
-}
-
-#[derive(Clone)]
-struct TensorIterator<'a, T> {
-    tensor: &'a Vec<Vec<Vec<T>>>,
-    w: usize,
-    m: usize,
-    n: usize,
-    u: usize,
-    j: usize,
-    i: usize,
-}
-
-impl<'a, T> TensorIterator<'a, T> {
-    fn new(tensor: &'a Vec<Vec<Vec<T>>>, w: usize, m: usize, n: usize) -> TensorIterator<'a, T> {
-        let u = 0;
-        let j = 0;
-        let i = 0;
-        TensorIterator {
-            tensor,
-            w,
-            n,
-            m,
-            u,
-            j,
-            i,
-        }
-    }
-}
-
-impl<'a, T> Iterator for TensorIterator<'a, T> {
-    type Item = &'a T;
-
-    #[inline]
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.u < self.w {
-            let next = &self.tensor[self.u][self.j][self.i];
-            self.i += 1;
-            if self.i >= self.n {
-                self.i = 0;
-                self.j += 1;
-            }
-            if self.j >= self.m {
-                self.j = 0;
-                self.u += 1;
-            }
-            Some(next)
-        } else {
-            None
-        }
-    }
-
-    #[inline]
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        let size = self.w * self.m * self.n;
-        (size, Some(size))
     }
 }
 
@@ -1751,7 +1689,13 @@ mod tests {
     fn test_cycle_tensor_poly_evals() {
         // Generate a random f_uji tensor
         let mut rng = rand::thread_rng();
-        let f_uji = (0..5).map(|_| (0..4).map(|_| (0..3).map(|_| Scalar::random(&mut rng)).collect::<Vec<_>>()).collect::<Vec<_>>()).collect::<Vec<_>>();
+        let f_uji = (0..5)
+            .map(|_| {
+                (0..4)
+                    .map(|_| (0..3).map(|_| Scalar::random(&mut rng)).collect::<Vec<_>>())
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
 
         let mut digits: Vec<usize> = vec![0; f_uji[0].len()];
         for eval in cycle_tensor_poly_evals(&f_uji).take(81) {
