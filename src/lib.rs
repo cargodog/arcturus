@@ -29,5 +29,4 @@ pub use proof::*;
 // Internal modules
 //-----------------------------------------------------------------------------
 pub(crate) mod transcript;
-#[macro_use]
 pub(crate) mod util;
