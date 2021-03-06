@@ -91,20 +91,6 @@ pub fn sized_flatten<I: Iterator, U>(iter: I) -> SizedFlatten<I, U> {
     SizedFlatten::new(iter)
 }
 
-#[macro_export]
-macro_rules! flatten_2d {
-    ( $ii:expr ) => {
-        sized_flatten($ii.into_iter().map(|v| v.iter()))
-    };
-}
-
-#[macro_export]
-macro_rules! flatten_3d {
-    ( $ii:expr ) => {
-        sized_flatten(flatten_2d!($ii).into_iter().map(|v| v.iter()))
-    };
-}
-
 #[cfg(test)]
 mod test {
     use super::*;

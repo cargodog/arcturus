@@ -2,7 +2,6 @@
 use crate::errors::{ArcturusError, ArcturusResult};
 use crate::transcript::TranscriptProtocol;
 use crate::util::{exp_iter, sized_flatten};
-use crate::{flatten_2d, flatten_3d};
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use blake2::Blake2b;
@@ -19,6 +18,18 @@ use rand::thread_rng;
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "std")]
 use std::vec::Vec;
+
+macro_rules! flatten_2d {
+    ( $ii:expr ) => {
+        sized_flatten($ii.into_iter().map(|v| v.iter()))
+    };
+}
+
+macro_rules! flatten_3d {
+    ( $ii:expr ) => {
+        sized_flatten(flatten_2d!($ii).into_iter().map(|v| v.iter()))
+    };
+}
 
 /// An output consists of a public key and a value commitment
 #[derive(Debug, Clone, PartialEq)]
