@@ -581,7 +581,7 @@ impl ArcturusGens {
         let f_poly_pk = f_puji
             .iter()
             .map(|f_uji| {
-                cycle_tensor_poly_evals(&f_uji)
+                CycleTensorPolyEvals::new(&f_uji)
                     .take(self.ring_size())
                     .collect::<Vec<_>>()
             })
@@ -755,23 +755,23 @@ struct CycleTensorPolyEvals<'a> {
     partial_prods_ju: Vec<Vec<Scalar>>,
 }
 
-fn cycle_tensor_poly_evals<'a>(f_uji: &'a Vec<Vec<Vec<Scalar>>>) -> CycleTensorPolyEvals<'a> {
-    let w = f_uji.len();
-    let m = f_uji[0].len();
-    let n = f_uji[0][0].len();
-    let partial_digits_j = Vec::with_capacity(m);
-    let partial_prods_ju = vec![vec![Scalar::one(); w]; m];
-    CycleTensorPolyEvals {
-        w,
-        m,
-        n,
-        f_uji,
-        partial_digits_j,
-        partial_prods_ju,
+impl<'a> CycleTensorPolyEvals<'a> {
+    fn new(f_uji: &'a Vec<Vec<Vec<Scalar>>>) -> CycleTensorPolyEvals<'a> {
+        let w = f_uji.len();
+        let m = f_uji[0].len();
+        let n = f_uji[0][0].len();
+        let partial_digits_j = Vec::with_capacity(m);
+        let partial_prods_ju = vec![vec![Scalar::one(); w]; m];
+        CycleTensorPolyEvals {
+            w,
+            m,
+            n,
+            f_uji,
+            partial_digits_j,
+            partial_prods_ju,
+        }
     }
-}
 
-impl CycleTensorPolyEvals<'_> {
     // Recursively multiply the factors corresponding to each digit of k
     fn update(&mut self) {
         if let Some(mut i) = self.partial_digits_j.pop() {
@@ -1709,7 +1709,7 @@ mod tests {
             .collect::<Vec<_>>();
 
         let mut digits: Vec<usize> = vec![0; f_uji[0].len()];
-        for eval in cycle_tensor_poly_evals(&f_uji).take(81) {
+        for eval in CycleTensorPolyEvals::new(&f_uji).take(81) {
             let mut sum = Scalar::zero();
             for u in 0..f_uji.len() {
                 let mut prod = Scalar::one();
