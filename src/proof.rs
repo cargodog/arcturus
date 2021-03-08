@@ -581,7 +581,7 @@ impl ArcturusGens {
         let f_poly_pk = f_puji
             .iter()
             .map(|f_uji| {
-                CycleTensorPolyEvals::new(&f_uji)
+                CycleTensorPolyEvals::new(&f_uji, 0)
                     .take(self.ring_size())
                     .collect::<Vec<_>>()
             })
@@ -743,19 +743,40 @@ struct CycleTensorPolyEvals<'a> {
 }
 
 impl<'a> CycleTensorPolyEvals<'a> {
-    fn new(f_uji: &'a Vec<Vec<Vec<Scalar>>>) -> CycleTensorPolyEvals<'a> {
+    fn new(f_uji: &'a Vec<Vec<Vec<Scalar>>>, start: usize) -> CycleTensorPolyEvals<'a> {
         let w = f_uji.len();
         let m = f_uji[0].len();
         let n = f_uji[0][0].len();
-        let partial_digits_j = Vec::with_capacity(m);
+        let partial_digits_j = vec![0; m];
         let partial_prods_ju = vec![vec![Scalar::one(); w]; m];
-        CycleTensorPolyEvals {
+        let mut eval_iter = CycleTensorPolyEvals {
             w,
             m,
             n,
             f_uji,
             partial_digits_j,
             partial_prods_ju,
+        };
+        eval_iter.set_position(start);
+        eval_iter
+    }
+
+    fn set_position(&mut self, pos: usize) {
+        // Decompose new position into stored digits
+        for (j, d) in RadixDecomposer::new(pos, self.n).take(self.m).enumerate() {
+            self.partial_digits_j[self.m - j - 1] = d;
+        }
+
+        // Update partial products
+        for u in 0..self.w {
+            self.partial_prods_ju[0][u] = self.f_uji[u][self.m - 1][self.partial_digits_j[0]];
+        }
+        for j in 1..self.m {
+            for u in 0..self.w {
+                let prev_part = self.partial_prods_ju[j - 1][u];
+                self.partial_prods_ju[j][u] =
+                    prev_part * self.f_uji[u][self.m - j - 1][self.partial_digits_j[j]];
+            }
         }
     }
 
@@ -799,8 +820,9 @@ impl Iterator for CycleTensorPolyEvals<'_> {
 
     #[inline]
     fn next(&mut self) -> Option<Scalar> {
+        let eval_sum = self.partial_prods_ju.last().unwrap().iter().sum::<Scalar>();
         self.update();
-        Some(self.partial_prods_ju.last().unwrap().iter().sum::<Scalar>())
+        Some(eval_sum)
     }
 
     #[inline]
@@ -1638,7 +1660,7 @@ mod tests {
             .collect::<Vec<_>>();
 
         let mut digits: Vec<usize> = vec![0; f_uji[0].len()];
-        for eval in CycleTensorPolyEvals::new(&f_uji).take(81) {
+        for eval in CycleTensorPolyEvals::new(&f_uji, 0).take(81) {
             let mut sum = Scalar::zero();
             for u in 0..f_uji.len() {
                 let mut prod = Scalar::one();
