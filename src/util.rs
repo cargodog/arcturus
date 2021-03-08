@@ -1,3 +1,5 @@
+use core::cmp::PartialOrd;
+use core::ops::{Div, Mul, Sub};
 use curve25519_dalek::scalar::Scalar;
 
 #[derive(Clone)]
@@ -91,6 +93,35 @@ pub fn sized_flatten<I: Iterator, U>(iter: I) -> SizedFlatten<I, U> {
     SizedFlatten::new(iter)
 }
 
+pub struct RadixDecomposer<T> {
+    radix: T,
+    quotient: T,
+}
+
+impl<T> RadixDecomposer<T> {
+    pub fn new(num: T, radix: T) -> RadixDecomposer<T> {
+        RadixDecomposer {
+            radix: radix,
+            quotient: num,
+        }
+    }
+}
+
+impl<T> Iterator for RadixDecomposer<T>
+where
+    T: Copy + Div<Output = T> + Mul<Output = T> + PartialOrd + Sub<Output = T>,
+{
+    type Item = T;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        let q = self.quotient / self.radix;
+        let r = self.quotient - (self.radix * q);
+        self.quotient = q;
+        Some(r)
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -128,5 +159,65 @@ mod test {
 
         // Test size_hint()
         assert_eq!((10, Some(10)), SizedFlatten::new(nested.iter()).size_hint());
+    }
+
+    struct RadixDecomposeTest {
+        num: usize,
+        radix: usize,
+        decomposed: [usize; 12],
+    }
+    const RADIX_DECOMPOSE_TESTS: [RadixDecomposeTest; 8] = [
+        RadixDecomposeTest {
+            num: 131,
+            radix: 2,
+            decomposed: [1, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0],
+        },
+        RadixDecomposeTest {
+            num: 131,
+            radix: 8,
+            decomposed: [3, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        },
+        RadixDecomposeTest {
+            num: 131,
+            radix: 10,
+            decomposed: [1, 3, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        },
+        RadixDecomposeTest {
+            num: 131,
+            radix: 16,
+            decomposed: [3, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        },
+        RadixDecomposeTest {
+            num: 3819,
+            radix: 2,
+            decomposed: [1, 1, 0, 1, 0, 1, 1, 1, 0, 1, 1, 1],
+        },
+        RadixDecomposeTest {
+            num: 3819,
+            radix: 8,
+            decomposed: [3, 5, 3, 7, 0, 0, 0, 0, 0, 0, 0, 0],
+        },
+        RadixDecomposeTest {
+            num: 3819,
+            radix: 10,
+            decomposed: [9, 1, 8, 3, 0, 0, 0, 0, 0, 0, 0, 0],
+        },
+        RadixDecomposeTest {
+            num: 3819,
+            radix: 16,
+            decomposed: [11, 14, 14, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        },
+    ];
+
+    #[test]
+    fn radix_decomposer() {
+        for test in &RADIX_DECOMPOSE_TESTS {
+            assert_eq!(
+                &test.decomposed,
+                &RadixDecomposer::new(test.num, test.radix)
+                    .take(12)
+                    .collect::<Vec<usize>>()[..]
+            );
+        }
     }
 }

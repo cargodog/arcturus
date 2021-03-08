@@ -1,7 +1,7 @@
 #![allow(non_snake_case)]
 use crate::errors::{ArcturusError, ArcturusResult};
 use crate::transcript::TranscriptProtocol;
-use crate::util::{exp_iter, sized_flatten};
+use crate::util::{exp_iter, sized_flatten, RadixDecomposer};
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use blake2::Blake2b;
@@ -295,9 +295,9 @@ impl ArcturusGens {
         let sigma_uji = idxs
             .iter()
             .map(|&l| {
-                convert_base(l, self.n, self.m)
-                    .iter()
-                    .map(|&l_j| {
+                RadixDecomposer::new(l, self.n)
+                    .take(self.m)
+                    .map(|l_j| {
                         let mut l_ji = vec![Scalar::zero(); self.n - 1];
                         l_ji.insert(l_j, Scalar::one());
                         l_ji
@@ -733,19 +733,6 @@ fn derive_generator(base: &RistrettoPoint, u: u32, j: u32, i: u32) -> RistrettoP
     RistrettoPoint::hash_from_bytes::<Blake2b>(&bytes)
 }
 
-fn convert_base(num: usize, base: usize, digits: usize) -> Vec<usize> {
-    let mut x_j = vec![0usize; digits];
-    let mut x = num;
-    let mut j = 0;
-    while x > 0 {
-        let q = x / base;
-        x_j[j] = x - base * q;
-        x = q;
-        j += 1;
-    }
-    x_j
-}
-
 struct CycleTensorPolyEvals<'a> {
     w: usize,
     m: usize,
@@ -831,8 +818,8 @@ fn compute_p_j(k: usize, l: usize, a_ji: &Vec<Vec<Scalar>>) -> Vec<Scalar> {
     p.push(Scalar::one());
 
     // Convert k & l to vectors of n-ary digits
-    let k = convert_base(k, n, m);
-    let l = convert_base(l, n, m);
+    let k = RadixDecomposer::new(k, n).take(m).collect::<Vec<_>>();
+    let l = RadixDecomposer::new(l, n).take(m).collect::<Vec<_>>();
 
     // Multiply each polynomial
     for j in 0..m {
@@ -1634,64 +1621,6 @@ mod tests {
             assert_eq!(
                 &test.generator,
                 &derive_generator(&G, test.u, test.j, test.i).compress()
-            );
-        }
-    }
-
-    struct ConvertBaseTest {
-        num: usize,
-        base: usize,
-        decomposed: [usize; 12],
-    }
-    const CONVERT_BASE_TESTS: [ConvertBaseTest; 8] = [
-        ConvertBaseTest {
-            num: 131,
-            base: 2,
-            decomposed: [1, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0],
-        },
-        ConvertBaseTest {
-            num: 131,
-            base: 8,
-            decomposed: [3, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        },
-        ConvertBaseTest {
-            num: 131,
-            base: 10,
-            decomposed: [1, 3, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        },
-        ConvertBaseTest {
-            num: 131,
-            base: 16,
-            decomposed: [3, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        },
-        ConvertBaseTest {
-            num: 3819,
-            base: 2,
-            decomposed: [1, 1, 0, 1, 0, 1, 1, 1, 0, 1, 1, 1],
-        },
-        ConvertBaseTest {
-            num: 3819,
-            base: 8,
-            decomposed: [3, 5, 3, 7, 0, 0, 0, 0, 0, 0, 0, 0],
-        },
-        ConvertBaseTest {
-            num: 3819,
-            base: 10,
-            decomposed: [9, 1, 8, 3, 0, 0, 0, 0, 0, 0, 0, 0],
-        },
-        ConvertBaseTest {
-            num: 3819,
-            base: 16,
-            decomposed: [11, 14, 14, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        },
-    ];
-
-    #[test]
-    fn test_convert_base() {
-        for test in &CONVERT_BASE_TESTS {
-            assert_eq!(
-                &test.decomposed,
-                &convert_base(test.num, test.base, test.decomposed.len())[..]
             );
         }
     }
