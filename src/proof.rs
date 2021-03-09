@@ -1659,6 +1659,7 @@ mod tests {
             })
             .collect::<Vec<_>>();
 
+        // Test the iterator starting at zero
         let mut digits: Vec<usize> = vec![0; f_uji[0].len()];
         for eval in CycleTensorPolyEvals::new(&f_uji, 0).take(81) {
             let mut sum = Scalar::zero();
@@ -1678,6 +1679,20 @@ mod tests {
                 }
             }
             assert_eq!(sum, eval);
+        }
+
+        // Now test the iterator at an offset and compare
+        let mut iter0 = CycleTensorPolyEvals::new(&f_uji, 0).take(81);
+        iter0.nth(4); // Skip first 5
+        let mut iter5 = CycleTensorPolyEvals::new(&f_uji, 5).take(81); // Same iterator, but start at position 5
+        for (i0, i5) in izip!(&mut iter0, &mut iter5) {
+            assert_eq!(i0, i5); // Each should match until iter0 runs out
+        }
+
+        // Now reset iter0, and check that last 5 of iter5 match first 5 of iter0
+        let mut iter0 = CycleTensorPolyEvals::new(&f_uji, 0).take(81);
+        for (i0, i5) in izip!(&mut iter0, &mut iter5) {
+            assert_eq!(i0, i5);
         }
     }
 
