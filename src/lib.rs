@@ -18,7 +18,11 @@ extern crate polynomials;
 // Public modules
 //-----------------------------------------------------------------------------
 pub mod errors;
+pub mod generators;
+pub mod output;
 pub mod proof;
+pub mod prover;
+pub mod verifier;
 
 //-----------------------------------------------------------------------------
 // Re-exports
