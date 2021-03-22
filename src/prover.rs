@@ -396,11 +396,8 @@ mod tests {
             .unwrap();
 
         // Test the proof verifies successfully
-        let mut verifier = Verifier::new(2, 5, 8).unwrap();
-        verifier.load_output_set(&ring[..]).unwrap();
-        verifier.push_proof(proof).unwrap();
         let mut t = Transcript::new(b"Arcturus-Test");
-        assert!(verifier.verify(&mut t).is_ok());
+        assert!(verify(&mut t, 2, 5, 8, &ring[..], ring.len(), &[(proof, &[0])]).is_ok());
     }
 
     struct ComputePJTest {
