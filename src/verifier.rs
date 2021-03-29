@@ -10,8 +10,8 @@ use alloc::vec::Vec;
 use core::iter::{once, repeat, Iterator};
 use curve25519_dalek::ristretto::RistrettoPoint;
 use curve25519_dalek::scalar::Scalar;
-use curve25519_dalek::traits::IsIdentity;
 use curve25519_dalek::traits::VartimeMultiscalarMul;
+use curve25519_dalek::traits::{Identity, IsIdentity};
 use itertools::izip;
 use merlin::Transcript;
 use rand::thread_rng;
@@ -43,11 +43,11 @@ pub fn verify(
     for (proof, bins) in proofs {
         verifier.add_proof(proof.clone(), bins)?;
     }
-    let (mut verifier, jobs) = verifier.polynomial_stage(tscp)?;
+    let (mut verifier, jobs) = verifier.field_ops_stage(tscp)?;
     for job in jobs {
         verifier.process_job(job)?;
     }
-    let (mut verifier, jobs) = verifier.ring_stage(output_set)?;
+    let (mut verifier, jobs) = verifier.group_ops_stage(output_set, 8)?;
     for job in jobs {
         verifier.process_job(job)?;
     }
@@ -123,10 +123,10 @@ impl CollectStage {
         Ok(())
     }
 
-    pub fn polynomial_stage(
+    pub fn field_ops_stage(
         self,
         tscp: &mut Transcript,
-    ) -> ArcturusResult<(PolynomialStage, Vec<PolynomialJob>)> {
+    ) -> ArcturusResult<(FieldOpsStage, Vec<FieldOpsJob>)> {
         tscp.arcturus_domain_sep(self.gens.n as u64, self.gens.m as u64);
 
         let mut jobs = Vec::with_capacity(self.proofs_p.len());
@@ -174,7 +174,7 @@ impl CollectStage {
             let mut rng = tscp.build_rng().finalize(&mut thread_rng());
             let eq_wts = (0..5).map(|_| Scalar::random(&mut rng)).collect();
 
-            jobs.push(PolynomialJob {
+            jobs.push(FieldOpsJob {
                 proof,
                 eq_wts,
                 x,
@@ -184,7 +184,7 @@ impl CollectStage {
                 f_poly_k: Vec::new(),
             });
         }
-        let stage = PolynomialStage {
+        let stage = FieldOpsStage {
             gens: self.gens,
             bin_size: self.bin_size,
             jobs_p: Vec::with_capacity(jobs.len()),
@@ -195,7 +195,7 @@ impl CollectStage {
 }
 
 #[derive(Debug, Clone)]
-pub struct PolynomialJob {
+pub struct FieldOpsJob {
     proof: Proof,
     eq_wts: Vec<Scalar>,
     x: Scalar,
@@ -206,14 +206,14 @@ pub struct PolynomialJob {
 }
 
 #[derive(Debug, Clone)]
-pub struct PolynomialStage {
+pub struct FieldOpsStage {
     gens: Generators,
     bin_size: usize,
-    jobs_p: Vec<PolynomialJob>,
+    jobs_p: Vec<FieldOpsJob>,
 }
 
-impl PolynomialStage {
-    pub fn process_job(&mut self, mut job: PolynomialJob) -> ArcturusResult<()> {
+impl FieldOpsStage {
+    pub fn process_job(&mut self, mut job: FieldOpsJob) -> ArcturusResult<()> {
         // Join f_uj0 & each of proof.f_uji to create f_uji
         job.f_uji = job
             .proof
@@ -239,43 +239,17 @@ impl PolynomialStage {
         Ok(())
     }
 
-    pub fn ring_stage(self, output_set: &[Output]) -> ArcturusResult<(RingStage, Vec<RingJob>)> {
+    pub fn group_ops_stage(
+        self,
+        output_set: &[Output],
+        num_jobs: usize,
+    ) -> ArcturusResult<(GroupOpsStage, Vec<GroupOpsJob>)> {
         let u_max = self.jobs_p.iter().map(|j| j.f_uji.len()).max().unwrap();
 
         // Now evaluate all multiplications for terms which do not iterate over 'k'.
         // The 'k' terms will be evaluated later in bins.
 
-        // First, collect all points used in each proof
-        let points_G = once(&self.gens.G);
-        let points_H_uji = flatten_3d!(&self.gens.H_uji[0..u_max]);
-        let points_A_p = self.jobs_p.iter().map(|job| &job.proof.A);
-        let points_B_p = self.jobs_p.iter().map(|job| &job.proof.B);
-        let points_C_p = self.jobs_p.iter().map(|job| &job.proof.C);
-        let points_D_p = self.jobs_p.iter().map(|job| &job.proof.D);
-        let points_X_pj = sized_flatten(self.jobs_p.iter().map(|job| job.proof.X_j.iter()));
-        let points_Y_pj = sized_flatten(self.jobs_p.iter().map(|job| job.proof.Y_j.iter()));
-        let points_Z_pj = sized_flatten(self.jobs_p.iter().map(|job| job.proof.Z_j.iter()));
-        let points_J_pu = sized_flatten(self.jobs_p.iter().map(|job| job.proof.J_u.iter()));
-        let points_Q_pt = sized_flatten(
-            self.jobs_p
-                .iter()
-                .map(|job| job.proof.mints.iter().map(|O| &O.commit)),
-        );
-
-        // Chain all points into a single iterator
-        let points = points_G
-            .chain(points_H_uji)
-            .chain(points_A_p)
-            .chain(points_B_p)
-            .chain(points_C_p)
-            .chain(points_D_p)
-            .chain(points_X_pj)
-            .chain(points_Y_pj)
-            .chain(points_Z_pj)
-            .chain(points_J_pu)
-            .chain(points_Q_pt);
-
-        // Next, collect all scalar factors to be multiplied with the aforementioned points
+        // Collect all scalars used in each proof (excluding any ring terms)
         let scalars_G = once(
             self.jobs_p
                 .iter()
@@ -342,8 +316,7 @@ impl PolynomialStage {
                 .take(job.proof.mints.len())
         }));
 
-        // Chain all scalar factors into single iterator
-        let scalars = scalars_G
+        let mut scalars: Vec<Scalar> = scalars_G
             .chain(scalars_H_uji)
             .chain(scalars_A_p)
             .chain(scalars_B_p)
@@ -353,53 +326,73 @@ impl PolynomialStage {
             .chain(scalars_Y_pj)
             .chain(scalars_Z_pj)
             .chain(scalars_J_pu)
-            .chain(scalars_Q_pt);
+            .chain(scalars_Q_pt)
+            .collect();
 
-        // Evaluate everything as a single multiscalar multiplication
-        let partial_eval = RistrettoPoint::vartime_multiscalar_mul(scalars, points);
-
-        // Next, collect all points for terms that iterate over 'k'. This terms will be
-        // divided into bins, to allow parallel processing
-        let num_bins = self.gens.ring_size() / self.bin_size;
-        assert_eq!(self.gens.ring_size(), num_bins * self.bin_size);
-        let mut jobs = Vec::with_capacity(num_bins);
-        for (b, (bin_outputs, jobs_p)) in izip!(
-            output_set.chunks(self.bin_size),
-            (0..num_bins).map(|b| self
-                .jobs_p
+        // Collect all points used in each proof (excluding any ring terms)
+        let points_G = once(&self.gens.G);
+        let points_H_uji = flatten_3d!(&self.gens.H_uji[0..u_max]);
+        let points_A_p = self.jobs_p.iter().map(|job| &job.proof.A);
+        let points_B_p = self.jobs_p.iter().map(|job| &job.proof.B);
+        let points_C_p = self.jobs_p.iter().map(|job| &job.proof.C);
+        let points_D_p = self.jobs_p.iter().map(|job| &job.proof.D);
+        let points_X_pj = sized_flatten(self.jobs_p.iter().map(|job| job.proof.X_j.iter()));
+        let points_Y_pj = sized_flatten(self.jobs_p.iter().map(|job| job.proof.Y_j.iter()));
+        let points_Z_pj = sized_flatten(self.jobs_p.iter().map(|job| job.proof.Z_j.iter()));
+        let points_J_pu = sized_flatten(self.jobs_p.iter().map(|job| job.proof.J_u.iter()));
+        let points_Q_pt = sized_flatten(
+            self.jobs_p
                 .iter()
-                .filter(move |job| job.bins_b.iter().any(|&bin| bin == b)))
-        ).enumerate() {
+                .map(|job| job.proof.mints.iter().map(|O| &O.commit)),
+        );
+
+        let mut points: Vec<RistrettoPoint> = points_G
+            .chain(points_H_uji)
+            .chain(points_A_p)
+            .chain(points_B_p)
+            .chain(points_C_p)
+            .chain(points_D_p)
+            .chain(points_X_pj)
+            .chain(points_Y_pj)
+            .chain(points_Z_pj)
+            .chain(points_J_pu)
+            .chain(points_Q_pt)
+            .copied()
+            .collect();
+
+        // Next, collect the points and scalars associated with the ring terms. Ring terms
+        // are divided into bins. Some proofs may not apply to all bins, so the scalars for
+        // each bin should only be collected from proofs which apply to that bin.
+        for (b, bin_outputs) in output_set.chunks(self.bin_size).enumerate() {
             let points_M_k = bin_outputs
                 .iter()
                 .take(self.gens.ring_size())
-                .map(|O| O.pubkey);
-            let points_U = once(self.gens.U);
+                .map(|O| &O.pubkey);
+            let points_U = once(&self.gens.U);
             let points_P_k = bin_outputs
                 .iter()
                 .take(self.gens.ring_size())
-                .map(|O| O.commit);
+                .map(|O| &O.commit);
 
-            // Chain all points into a single iterator
-            let points = points_M_k
-                .chain(points_U)
-                .chain(points_P_k)
-                .collect::<Vec<_>>();
+            points.extend(points_M_k);
+            points.extend(points_U);
+            points.extend(points_P_k);
 
-            // Next, collect all scalar factors to be multiplied with the aforementioned points
             let offset = b * self.bin_size;
             let scalars_M_k = (0..self.gens.ring_size())
                 .skip(offset)
                 .take(self.bin_size)
-                .map(|k| {
-                jobs_p
-                    .clone()
-                    .map(|job| job.eq_wts[2] * job.mu_k[k] * job.f_poly_k[k])
-                    .sum()
-            });
+                .map::<Scalar, _>(|k| {
+                    self.jobs_p
+                        .iter()
+                        .filter(|job| job.bins_b.iter().any(|&bin| bin == b))
+                        .map(|job| job.eq_wts[2] * job.mu_k[k] * job.f_poly_k[k])
+                        .sum()
+                });
             let scalars_U = once(
-                jobs_p
-                    .clone()
+                self.jobs_p
+                    .iter()
+                    .filter(|job| job.bins_b.iter().any(|&bin| bin == b))
                     .map(|job| {
                         izip!(&job.mu_k, &job.f_poly_k)
                             .skip(offset)
@@ -412,44 +405,72 @@ impl PolynomialStage {
             let scalars_P_k = (0..self.gens.ring_size())
                 .skip(offset)
                 .take(self.bin_size)
-                .map(|k| {
-                jobs_p
-                    .clone()
-                    .map(|job| job.eq_wts[4] * job.f_poly_k[k])
-                    .sum()
-            });
+                .map::<Scalar, _>(|k| {
+                    self.jobs_p
+                        .iter()
+                        .filter(|job| job.bins_b.iter().any(|&bin| bin == b))
+                        .map(|job| job.eq_wts[4] * job.f_poly_k[k])
+                        .sum()
+                });
 
-            // Chain all scalar factors into single iterator
-            let scalars = scalars_M_k
-                .chain(scalars_U)
-                .chain(scalars_P_k)
-                .collect::<Vec<_>>();
-
-            jobs.push(RingJob { scalars, points });
+            scalars.extend(scalars_M_k);
+            scalars.extend(scalars_U);
+            scalars.extend(scalars_P_k);
         }
-        let stage = RingStage { partial_eval };
+
+        let jobs = (0..num_jobs).map(|idx| GroupOpsJob { idx }).collect();
+
+        let stage = GroupOpsStage {
+            scalars,
+            points,
+            num_jobs,
+            jobs_processed: Vec::with_capacity(num_jobs),
+            partial_eval: RistrettoPoint::identity(),
+        };
+
         Ok((stage, jobs))
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct RingJob {
-    scalars: Vec<Scalar>,
-    points: Vec<RistrettoPoint>,
+pub struct GroupOpsJob {
+    idx: usize,
 }
 
 #[derive(Debug, Clone)]
-pub struct RingStage {
+pub struct GroupOpsStage {
+    scalars: Vec<Scalar>,
+    points: Vec<RistrettoPoint>,
+    num_jobs: usize,
+    jobs_processed: Vec<usize>,
     partial_eval: RistrettoPoint,
 }
 
-impl RingStage {
-    pub fn process_job(&mut self, job: RingJob) -> ArcturusResult<()> {
-        self.partial_eval += RistrettoPoint::vartime_multiscalar_mul(job.scalars, job.points);
+impl GroupOpsStage {
+    pub fn process_job(&mut self, job: GroupOpsJob) -> ArcturusResult<()> {
+        self.partial_eval += RistrettoPoint::vartime_multiscalar_mul(
+            self.scalars.iter().skip(job.idx).step_by(self.num_jobs),
+            self.points.iter().skip(job.idx).step_by(self.num_jobs),
+        );
+        self.jobs_processed.push(job.idx);
         Ok(())
     }
 
     pub fn finalize(self) -> ArcturusResult<()> {
+        // Be sure each job has been processed exactly once
+        if self.num_jobs != self.jobs_processed.len() {
+            return Err(ArcturusError::VerificationFailed);
+        }
+        for job_idx in 0..self.num_jobs {
+            if self
+                .jobs_processed
+                .iter()
+                .find(|&&idx| idx == job_idx)
+                .is_none()
+            {
+                return Err(ArcturusError::VerificationFailed);
+            }
+        }
         if self.partial_eval.is_identity() {
             Ok(())
         } else {
@@ -598,7 +619,16 @@ mod tests {
 
         // Test the proof verifies successfully
         let mut t = Transcript::new(b"Arcturus-Test");
-        assert!(verify(&mut t, 2, 5, 8, &ring[..], ring.len()/4, &[(proof, &[0, 1, 2, 3])]).is_ok());
+        assert!(verify(
+            &mut t,
+            2,
+            5,
+            8,
+            &ring[..],
+            ring.len() / 4,
+            &[(proof, &[0, 1, 2, 3])]
+        )
+        .is_ok());
     }
 
     #[test]
