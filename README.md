@@ -1,5 +1,8 @@
-# arcturus
+# ⚠️  Security Warning
+A break has been identified in the security assumptions as written in the Arcutur paper. This project exists for research purposes and historical context only, and under no circumstances should be used in any real application. Read more about the break here: https://github.com/cargodog/arcturus/issues/43
 
+
+# arcturus
 A pure Rust, light-weight, and performant implementation of the Arcturus zero-knowledge
 proof system [[link][arcturus-paper]].
 
@@ -11,11 +14,6 @@ anonymity sets. A correct proof provides the following guarantees:
    spends.<sup>[2](#usage-notes)</sup>
 1) The transaction input and output values are hidden (aka confidential).
 1) The transaction inputs and signing keys are hidden in a large anonymity set.<sup>[3](#usage-notes)</sup>
-
-# ⚠️  Security Warning
-This crate is a work in progress and has not been independently audited!
-
-USE AT YOUR OWN RISK!
 
 # Documentation
 Detailed documentation can be found [here][docs-external].
